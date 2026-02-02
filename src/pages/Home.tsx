@@ -393,8 +393,33 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
   // SDGsアイコンのURL取得
   const getSdgIconUrl = (sdgText: string) => {
     const num = getSdgNumber(sdgText);
-    // 国連公式のSDGsアイコンURL（英語版）
-    return `https://www.un.org/sustainabledevelopment/wp-content/uploads/2015/12/english_SDG_17goals_icons_individual_rgb-${num.padStart(2, '0')}.png`;
+    // Global Goals公式のSDGsアイコンURL（より安定したソース）
+    return `https://www.globalgoals.org/wp-content/uploads/2023/08/SDG-${num}.svg`;
+  };
+
+  // SDGs���号に応じた背景色を返す（フォールバック用）
+  const getSdgColor = (sdgText: string) => {
+    const num = getSdgNumber(sdgText);
+    const colors: { [key: string]: string } = {
+      '1': '#E5243B',
+      '2': '#DDA63A',
+      '3': '#4C9F38',
+      '4': '#C5192D',
+      '5': '#FF3A21',
+      '6': '#26BDE2',
+      '7': '#FCC30B',
+      '8': '#A21942',
+      '9': '#FD6925',
+      '10': '#DD1367',
+      '11': '#FD9D24',
+      '12': '#BF8B2E',
+      '13': '#3F7E44',
+      '14': '#0A97D9',
+      '15': '#56C02B',
+      '16': '#00689D',
+      '17': '#19486A',
+    };
+    return colors[num] || '#4C9F38';
   };
 
   return (
@@ -412,29 +437,36 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
         <div className="flex-1 p-4 flex flex-col">
           {/* SDGsアイコン - 固定高さ */}
           <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start">
-            {article.sdgs.slice(0, 6).map((sdg, index) => (
-              <div 
-                key={index} 
-                className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0"
-                title={sdg}
-              >
-                <img 
-                  src={getSdgIconUrl(sdg)}
-                  alt={`SDG ${getSdgNumber(sdg)}`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // フォールバック: 画像読み込みエラー時は番号を表示
-                    const target = e.currentTarget;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent) {
-                      parent.className = 'rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 bg-[#4C9F38] flex items-center justify-center';
-                      parent.innerHTML = `<span class="font-['Inter:Bold',sans-serif] font-bold text-[16px] text-white">${getSdgNumber(sdg)}</span>`;
-                    }
-                  }}
-                />
-              </div>
-            ))}
+            {article.sdgs.slice(0, 6).map((sdg, index) => {
+              const sdgNum = getSdgNumber(sdg);
+              const bgColor = getSdgColor(sdg);
+              
+              return (
+                <div 
+                  key={index} 
+                  className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: bgColor }}
+                  title={sdg}
+                >
+                  <img 
+                    src={getSdgIconUrl(sdg)}
+                    alt={`SDG ${sdgNum}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // フォールバック: 画像読み込みエラー時は番号を表示
+                      e.currentTarget.style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent && !parent.querySelector('span')) {
+                        const span = document.createElement('span');
+                        span.className = "font-['Inter:Bold',sans-serif] font-bold text-[16px] text-white";
+                        span.textContent = sdgNum;
+                        parent.appendChild(span);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
             {article.sdgs.length > 6 && (
               <div className="bg-[rgba(0,0,0,0.1)] rounded w-[40px] h-[40px] flex items-center justify-center flex-shrink-0">
                 <span className="font-['Inter:Bold',sans-serif] font-bold text-[13px] text-[rgba(0,0,0,0.6)]">
