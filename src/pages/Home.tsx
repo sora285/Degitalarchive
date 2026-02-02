@@ -143,7 +143,7 @@ function Header() {
         </p>
         <p 
           onClick={() => navigate('/home')}
-          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)] border-b-2 border-[rgba(0,0,0,0.7)]"
         >
           一覧から探す
         </p>
@@ -244,7 +244,7 @@ function SideMenu({ filters, setFilters, onSearch }: {
             "2. 飢餓をゼロに",
             "3. すべての人に健康と福祉を",
             "4. 質の高い教育をみんなに",
-            "11. 住み続けられるまちづくりを",
+            "11. 住み続けられる��ちづくりを",
             "13. 気候変動に具体的な対策を"
           ]} 
         />
