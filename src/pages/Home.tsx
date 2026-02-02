@@ -19,9 +19,15 @@ interface ArticleData {
   };
 }
 
-// 記事データをエクスポート
-export { articlesData };
-export type { ArticleData, FilterState };
+interface FilterState {
+  sdgs: string;
+  category: string;
+  grade: string;
+  tag: string;
+  company: string;
+  keyword: string;
+  childActivities: boolean;
+}
 
 // 記事データ
 const articlesData: ArticleData[] = [
@@ -117,15 +123,9 @@ const articlesData: ArticleData[] = [
   }
 ];
 
-interface FilterState {
-  sdgs: string;
-  category: string;
-  grade: string;
-  tag: string;
-  company: string;
-  keyword: string;
-  childActivities: boolean;
-}
+// 記事データをエクスポート
+export { articlesData };
+export type { ArticleData, FilterState };
 
 function Header() {
   const navigate = useNavigate();
