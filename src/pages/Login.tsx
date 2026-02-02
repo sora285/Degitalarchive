@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { ChevronDown } from "lucide-react";
 
 function Header() {
   return (
@@ -10,15 +11,78 @@ function Header() {
   );
 }
 
+// 学校リスト
+const schools = [
+  "みなとみらい小学校",
+  "横浜港小学校",
+  "赤レンガ小学校",
+  "ランドマーク小学校",
+  "パシフィコ小学校"
+];
+
+function SchoolSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const handleSelect = (school: string) => {
+    onChange(school);
+    setIsOpen(false);
+  };
+  
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl px-5 py-4 text-[16px] transition-all duration-200 focus:outline-none focus:border-[rgba(255,209,131,0.93)] focus:shadow-lg focus:shadow-[rgba(255,209,131,0.2)] flex items-center justify-between text-left"
+      >
+        <span className={value ? "text-[rgba(0,0,0,0.8)]" : "text-[rgba(0,0,0,0.4)]"}>
+          {value || "学校を選択してください"}
+        </span>
+        <ChevronDown 
+          size={20} 
+          className={`text-[rgba(0,0,0,0.5)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+        />
+      </button>
+      
+      {isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl shadow-2xl z-20 max-h-[240px] overflow-y-auto">
+            {schools.map((school, index) => (
+              <div
+                key={index}
+                onClick={() => handleSelect(school)}
+                className={`px-5 py-4 cursor-pointer text-[16px] transition-colors ${
+                  value === school 
+                    ? 'bg-[rgba(255,209,131,0.3)] text-[rgba(0,0,0,0.9)]' 
+                    : 'text-[rgba(0,0,0,0.7)] hover:bg-[rgba(255,209,131,0.1)]'
+                } ${index === 0 ? 'rounded-t-xl' : ''} ${index === schools.length - 1 ? 'rounded-b-xl' : ''}`}
+              >
+                {school}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Login() {
   const navigate = useNavigate();
+  const [school, setSchool] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     // Simple mock authentication
-    if (username && password) {
+    if (school && username && password) {
+      // 学校名をローカルストレージに保存（オプション）
+      localStorage.setItem('currentSchool', school);
       navigate("/home");
     }
   };
@@ -34,6 +98,15 @@ export default function Login() {
           </h1>
           
           <form onSubmit={handleLogin} className="flex flex-col gap-7">
+            <div className="flex flex-col gap-3">
+              <label 
+                className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)] ml-1"
+              >
+                学校名
+              </label>
+              <SchoolSelect value={school} onChange={setSchool} />
+            </div>
+
             <div className="flex flex-col gap-3">
               <label 
                 htmlFor="username"
