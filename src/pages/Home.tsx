@@ -1,12 +1,12 @@
-import { useNavigate } from "react-router";
-import { LogOut, ChevronDown } from "lucide-react";
+import { useNavigate, useParams } from "react-router";
+import { LogOut, ChevronDown, Check } from "lucide-react";
 import { useState } from "react";
 
 // 記事データの型定義
 interface ArticleData {
   id: number;
   title: string;
-  sdgs: string;
+  sdgs: string[];
   category: string;
   grade: string;
   tags: string[];
@@ -20,8 +20,8 @@ interface ArticleData {
 }
 
 interface FilterState {
-  sdgs: string;
-  category: string;
+  sdgs: string[];
+  category: string[];
   grade: string;
   tag: string;
   company: string;
@@ -34,7 +34,7 @@ const articlesData: ArticleData[] = [
   {
     id: 1,
     title: "みなとみらいの環境保護活動",
-    sdgs: "13. 気候変動に具体的な対策を",
+    sdgs: ["13. 気候変動に具体的な対策を", "11. 住み続けられるまちづくりを"],
     category: "環境",
     grade: "6年1組",
     tags: ["みなとみらい", "環境保護"],
@@ -49,7 +49,7 @@ const articlesData: ArticleData[] = [
   {
     id: 2,
     title: "SDGsを学ぶ地域貢献プロジェクト",
-    sdgs: "11. 住み続けられるまちづくりを",
+    sdgs: ["11. 住み続けられるまちづくりを", "4. 質の高い教育をみんなに"],
     category: "地域活動",
     grade: "6年2組",
     tags: ["SDGs", "地域貢献"],
@@ -64,7 +64,7 @@ const articlesData: ArticleData[] = [
   {
     id: 3,
     title: "リサイクル活動で環境を守る",
-    sdgs: "13. 気候変動に具体的な対策を",
+    sdgs: ["13. 気候変動に具体的な対策を", "11. 住み続けられるまちづくりを"],
     category: "環境",
     grade: "5年1組",
     tags: ["リサイクル", "環境保護", "みなとみらい"],
@@ -79,7 +79,7 @@ const articlesData: ArticleData[] = [
   {
     id: 4,
     title: "国際理解と文化交流",
-    sdgs: "4. 質の高い教育をみんなに",
+    sdgs: ["4. 質の高い教育をみんなに"],
     category: "国際交流",
     grade: "6年1組",
     tags: ["国際理解", "文化交流"],
@@ -94,10 +94,10 @@ const articlesData: ArticleData[] = [
   {
     id: 5,
     title: "ボランティア活動で地域に貢献",
-    sdgs: "11. 住み続けられるまちづくりを",
+    sdgs: ["11. 住み続けられるまちづくりを", "1. 貧困をなくそう"],
     category: "地域活動",
     grade: "5年2組",
-    tags: ["ボランティア", "地域貢献"],
+    tags: ["ボランティア", "地域貢"],
     company: "企業B",
     date: "2024/01/25",
     location: {
@@ -109,7 +109,7 @@ const articlesData: ArticleData[] = [
   {
     id: 6,
     title: "SDGsと国際協力",
-    sdgs: "1. 貧困をなくそう",
+    sdgs: ["1. 貧困をなくそう", "4. 質の高い教育をみんなに"],
     category: "国際交流",
     grade: "6年2組",
     tags: ["SDGs", "環境保護", "国際理解"],
@@ -129,24 +129,30 @@ export type { ArticleData, FilterState };
 
 function Header() {
   const navigate = useNavigate();
+  const { schoolId } = useParams<{ schoolId: string }>();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">みなとみらいデジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
-        <p 
-          onClick={() => navigate('/map')}
-          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
-        >
-          地図から探す
-        </p>
-        <p 
-          onClick={() => navigate('/home')}
-          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)] border-b-2 border-[rgba(0,0,0,0.7)]"
-        >
-          一覧から探す
-        </p>
+        <div className="relative">
+          <p 
+            onClick={() => navigate(`/schools/${schoolId}/map`)}
+            className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+          >
+            地図から探す
+          </p>
+        </div>
+        <div className="relative">
+          <p 
+            onClick={() => navigate(`/schools/${schoolId}/home`)}
+            className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+          >
+            一覧から探す
+          </p>
+          <div className="absolute -bottom-[23px] left-0 right-0 h-[3px] bg-[rgba(0,0,0,0.7)] rounded-t-full" />
+        </div>
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
@@ -159,7 +165,12 @@ function Header() {
   );
 }
 
-function FilterSelect({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (value: string) => void }) {
+function FilterSelect({ label, options, value, onChange }: { 
+  label: string; 
+  options: string[]; 
+  value: string; 
+  onChange: (value: string) => void 
+}) {
   const [isOpen, setIsOpen] = useState(false);
   
   const handleSelect = (option: string) => {
@@ -169,11 +180,10 @@ function FilterSelect({ label, options, value, onChange }: { label: string; opti
   
   const handleClear = () => {
     onChange("");
-    setIsOpen(false);
   };
   
   return (
-    <div className="mb-4 relative">
+    <div className="mb-6 relative">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -223,6 +233,84 @@ function FilterSelect({ label, options, value, onChange }: { label: string; opti
   );
 }
 
+function MultiSelectFilter({ label, options, values, onChange }: { 
+  label: string; 
+  options: string[]; 
+  values: string[]; 
+  onChange: (values: string[]) => void 
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const toggleOption = (option: string) => {
+    if (values.includes(option)) {
+      onChange(values.filter(v => v !== option));
+    } else {
+      onChange([...values, option]);
+    }
+  };
+  
+  const handleClearAll = () => {
+    onChange([]);
+  };
+  
+  return (
+    <div className="mb-4 relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white h-[45px] rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer border border-[rgba(0,0,0,0.15)] px-3 pr-8 text-[14px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[rgba(0,0,0,0.6)] text-left focus:outline-none focus:border-[rgba(255,209,131,0.93)] focus:shadow-lg flex items-center justify-between"
+      >
+        <span className={values.length > 0 ? "text-[rgba(0,0,0,0.8)]" : "text-[rgba(0,0,0,0.5)]"}>
+          {values.length > 0 ? `${label} (${values.length}件選択中)` : label}
+        </span>
+        <ChevronDown 
+          size={16} 
+          className={`text-[rgba(0,0,0,0.5)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+        />
+      </button>
+      
+      {isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[rgba(0,0,0,0.15)] rounded-lg shadow-xl z-20 max-h-[280px] overflow-y-auto">
+            {values.length > 0 && (
+              <div
+                onClick={handleClearAll}
+                className="px-3 py-2.5 cursor-pointer text-[14px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium transition-colors text-[rgba(0,0,0,0.5)] hover:bg-[rgba(255,100,100,0.1)] border-b border-[rgba(0,0,0,0.1)] sticky top-0 bg-white z-10"
+              >
+                ✕ すべてクリア
+              </div>
+            )}
+            {options.map((option, index) => (
+              <div
+                key={index}
+                onClick={() => toggleOption(option)}
+                className={`px-3 py-2.5 cursor-pointer text-[13px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium transition-colors flex items-center gap-2 ${
+                  values.includes(option) 
+                    ? 'bg-[rgba(255,209,131,0.2)] text-[rgba(0,0,0,0.9)]' 
+                    : 'text-[rgba(0,0,0,0.7)] hover:bg-[rgba(255,209,131,0.1)]'
+                } ${index === options.length - 1 ? 'rounded-b-lg' : ''}`}
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                  values.includes(option) 
+                    ? 'bg-[rgba(255,209,131,0.8)] border-[rgba(255,209,131,1)]' 
+                    : 'border-[rgba(0,0,0,0.3)]'
+                }`}>
+                  {values.includes(option) && <Check size={12} className="text-[rgba(0,0,0,0.8)]" />}
+                </div>
+                <span className="flex-1 leading-tight">{option}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SideMenu({ filters, setFilters, onSearch }: { 
   filters: FilterState; 
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
@@ -235,23 +323,23 @@ function SideMenu({ filters, setFilters, onSearch }: {
       <div className="absolute w-full px-6 top-8 overflow-y-auto h-[calc(100vh-120px)]">
         <p className="font-['Inter:Bold','Noto_Sans_JP:Bold',sans-serif] font-bold text-[18px] text-[rgba(0,0,0,0.8)] mb-6">フィルター</p>
         
-        <FilterSelect 
+        <MultiSelectFilter 
           label="SDGs" 
-          value={filters.sdgs}
+          values={filters.sdgs}
           onChange={(value) => setFilters(prev => ({ ...prev, sdgs: value }))}
           options={[
             "1. 貧困をなくそう",
             "2. 飢餓をゼロに",
             "3. すべての人に健康と福祉を",
             "4. 質の高い教育をみんなに",
-            "11. 住み続けられる��ちづくりを",
+            "11. 住み続けられるまちづくりを",
             "13. 気候変動に具体的な対策を"
           ]} 
         />
         
-        <FilterSelect 
+        <MultiSelectFilter 
           label="カテゴリから検索"
-          value={filters.category}
+          values={filters.category}
           onChange={(value) => setFilters(prev => ({ ...prev, category: value }))}
           options={["教育", "環境", "地域活動", "国際交流"]} 
         />
@@ -306,31 +394,96 @@ function SideMenu({ filters, setFilters, onSearch }: {
 }
 
 function Article({ article, onClick }: { article: ArticleData; onClick: () => void }) {
-  // SDGsテキストの長さに応じてフォントサイズを調整
-  const getSdgsFontSize = (text: string) => {
-    if (text.length > 20) return "text-[11px]";
-    if (text.length > 15) return "text-[12px]";
-    return "text-[13px]";
+  // SDGs番号を抽出
+  const getSdgNumber = (sdgText: string) => {
+    const match = sdgText.match(/^(\d+)\./);
+    return match ? match[1] : '';
+  };
+
+  // SDGsアイコンのURL取得
+  const getSdgIconUrl = (sdgText: string) => {
+    const num = getSdgNumber(sdgText);
+    // UN公式のSDGsアイコン（より直接的なURL）
+    return `https://www.un.org/sustainabledevelopment/wp-content/uploads/2019/08/E-WEB-Goal-${num.padStart(2, '0')}.png`;
+  };
+
+  // SDGs号に応じた背景色を返す（フォールバック用）
+  const getSdgColor = (sdgText: string) => {
+    const num = getSdgNumber(sdgText);
+    const colors: { [key: string]: string } = {
+      '1': '#E5243B',
+      '2': '#DDA63A',
+      '3': '#4C9F38',
+      '4': '#C5192D',
+      '5': '#FF3A21',
+      '6': '#26BDE2',
+      '7': '#FCC30B',
+      '8': '#A21942',
+      '9': '#FD6925',
+      '10': '#DD1367',
+      '11': '#FD9D24',
+      '12': '#BF8B2E',
+      '13': '#3F7E44',
+      '14': '#0A97D9',
+      '15': '#56C02B',
+      '16': '#00689D',
+      '17': '#19486A',
+    };
+    return colors[num] || '#4C9F38';
   };
 
   return (
     <div 
-      className="cursor-pointer hover:scale-[1.02] hover:shadow-2xl transition-all duration-300 group" 
+      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-[340px] h-[460px] rounded-3xl" 
       onClick={onClick}
     >
-      <div className="relative h-[400px] w-[300px] bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
-        {/* 画像エリア */}
-        <div className="h-[200px] bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl">
+      <div className="relative h-full w-full bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
+        {/* 画像エリア - 固定高さ */}
+        <div className="h-[190px] bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl flex-shrink-0">
           <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.4)]">img</p>
         </div>
         
         {/* コンテンツエリア */}
-        <div className="flex-1 p-4 flex flex-col">
-          {/* SDGsバッジ */}
-          <div className="bg-gradient-to-r from-[rgba(255,209,131,0.5)] to-[rgba(255,220,150,0.5)] rounded-lg px-3 py-2 mb-3">
-            <p className={`font-['Inter:Semi_Bold',sans-serif] font-semibold ${getSdgsFontSize(article.sdgs)} text-[rgba(0,0,0,0.8)] text-center leading-tight`}>
-              {article.sdgs}
-            </p>
+        <div className="flex-1 p-6 flex flex-col">
+          {/* SDGsアイコン - 固定高さ */}
+          <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start">
+            {article.sdgs.slice(0, 6).map((sdg, index) => {
+              const sdgNum = getSdgNumber(sdg);
+              const bgColor = getSdgColor(sdg);
+              
+              return (
+                <div 
+                  key={index} 
+                  className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: bgColor }}
+                  title={sdg}
+                >
+                  <img 
+                    src={getSdgIconUrl(sdg)}
+                    alt={`SDG ${sdgNum}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // フォールバック: 画像読み込みエラー時は番号を表示
+                      e.currentTarget.style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent && !parent.querySelector('span')) {
+                        const span = document.createElement('span');
+                        span.className = "font-['Inter:Bold',sans-serif] font-bold text-[16px] text-white";
+                        span.textContent = sdgNum;
+                        parent.appendChild(span);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
+            {article.sdgs.length > 6 && (
+              <div className="bg-[rgba(0,0,0,0.1)] rounded w-[40px] h-[40px] flex items-center justify-center flex-shrink-0">
+                <span className="font-['Inter:Bold',sans-serif] font-bold text-[13px] text-[rgba(0,0,0,0.6)]">
+                  +{article.sdgs.length - 6}
+                </span>
+              </div>
+            )}
           </div>
           
           {/* タイトル */}
@@ -344,12 +497,12 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           </p>
           
           {/* 学年 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-3">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-4">
             {article.grade}
           </p>
           
           {/* タグ表示エリア */}
-          <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
+          <div className="flex flex-wrap gap-1.5 mb-4 min-h-[28px]">
             {article.tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
@@ -369,7 +522,7 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           </div>
           
           {/* 日付 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] text-[rgba(0,0,0,0.5)] mt-auto">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] text-[rgba(0,0,0,0.5)] mt-auto pt-2">
             {article.date}
           </p>
         </div>
@@ -380,9 +533,10 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
 
 export default function Home() {
   const navigate = useNavigate();
+  const { schoolId } = useParams<{ schoolId: string }>();
   const [filters, setFilters] = useState<FilterState>({
-    sdgs: "",
-    category: "",
+    sdgs: [],
+    category: [],
     grade: "",
     tag: "",
     company: "",
@@ -390,8 +544,8 @@ export default function Home() {
     childActivities: false
   });
   const [appliedFilters, setAppliedFilters] = useState<FilterState>({
-    sdgs: "",
-    category: "",
+    sdgs: [],
+    category: [],
     grade: "",
     tag: "",
     company: "",
@@ -402,8 +556,8 @@ export default function Home() {
   // フィルタリング処理
   const filterArticles = (articles: ArticleData[], filters: FilterState) => {
     return articles.filter(article => {
-      if (filters.sdgs && article.sdgs !== filters.sdgs) return false;
-      if (filters.category && article.category !== filters.category) return false;
+      if (filters.sdgs.length > 0 && !filters.sdgs.some(sdg => article.sdgs.includes(sdg))) return false;
+      if (filters.category.length > 0 && !filters.category.includes(article.category)) return false;
       if (filters.grade && article.grade !== filters.grade) return false;
       if (filters.tag && !article.tags.includes(filters.tag)) return false;
       if (filters.company && article.company !== filters.company) return false;
@@ -430,8 +584,8 @@ export default function Home() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/post')}
-          className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
+          onClick={() => navigate(`/schools/${schoolId}/post`)}
+          className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
         >
           + 記事を投稿
         </button>
@@ -441,7 +595,7 @@ export default function Home() {
         {filteredArticles.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArticles.map(article => (
-              <Article key={article.id} article={article} onClick={() => navigate(`/article/${article.id}`)} />
+              <Article key={article.id} article={article} onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)} />
             ))}
           </div>
         ) : (
