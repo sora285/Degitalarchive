@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { LogOut, ChevronDown, Check } from "lucide-react";
 import { useState } from "react";
 
@@ -97,7 +97,7 @@ const articlesData: ArticleData[] = [
     sdgs: ["11. 住み続けられるまちづくりを", "1. 貧困をなくそう"],
     category: "地域活動",
     grade: "5年2組",
-    tags: ["ボランティア", "地域貢献"],
+    tags: ["ボランティア", "地域貢"],
     company: "企業B",
     date: "2024/01/25",
     location: {
@@ -129,24 +129,30 @@ export type { ArticleData, FilterState };
 
 function Header() {
   const navigate = useNavigate();
+  const { schoolId } = useParams<{ schoolId: string }>();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">みなとみらいデジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
-        <p 
-          onClick={() => navigate('/map')}
-          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
-        >
-          地図から探す
-        </p>
-        <p 
-          onClick={() => navigate('/home')}
-          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)] border-b-2 border-[rgba(0,0,0,0.7)]"
-        >
-          一覧から探す
-        </p>
+        <div className="relative">
+          <p 
+            onClick={() => navigate(`/schools/${schoolId}/map`)}
+            className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+          >
+            地図から探す
+          </p>
+        </div>
+        <div className="relative">
+          <p 
+            onClick={() => navigate(`/schools/${schoolId}/home`)}
+            className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+          >
+            一覧から探す
+          </p>
+          <div className="absolute -bottom-[23px] left-0 right-0 h-[3px] bg-[rgba(0,0,0,0.7)] rounded-t-full" />
+        </div>
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
@@ -159,7 +165,12 @@ function Header() {
   );
 }
 
-function FilterSelect({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (value: string) => void }) {
+function FilterSelect({ label, options, value, onChange }: { 
+  label: string; 
+  options: string[]; 
+  value: string; 
+  onChange: (value: string) => void 
+}) {
   const [isOpen, setIsOpen] = useState(false);
   
   const handleSelect = (option: string) => {
@@ -169,11 +180,10 @@ function FilterSelect({ label, options, value, onChange }: { label: string; opti
   
   const handleClear = () => {
     onChange("");
-    setIsOpen(false);
   };
   
   return (
-    <div className="mb-4 relative">
+    <div className="mb-6 relative">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -393,11 +403,11 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
   // SDGsアイコンのURL取得
   const getSdgIconUrl = (sdgText: string) => {
     const num = getSdgNumber(sdgText);
-    // Global Goals公式のSDGsアイコンURL（より安定したソース）
-    return `https://www.globalgoals.org/wp-content/uploads/2023/08/SDG-${num}.svg`;
+    // UN公式のSDGsアイコン（より直接的なURL）
+    return `https://www.un.org/sustainabledevelopment/wp-content/uploads/2019/08/E-WEB-Goal-${num.padStart(2, '0')}.png`;
   };
 
-  // SDGs���号に応じた背景色を返す（フォールバック用）
+  // SDGs号に応じた背景色を返す（フォールバック用）
   const getSdgColor = (sdgText: string) => {
     const num = getSdgNumber(sdgText);
     const colors: { [key: string]: string } = {
@@ -424,17 +434,17 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
 
   return (
     <div 
-      className="cursor-pointer hover:scale-[1.02] hover:shadow-2xl transition-all duration-300 group" 
+      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-[340px] h-[460px] rounded-3xl" 
       onClick={onClick}
     >
-      <div className="relative h-[400px] w-[300px] bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
+      <div className="relative h-full w-full bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
         {/* 画像エリア - 固定高さ */}
-        <div className="h-[200px] bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl flex-shrink-0">
+        <div className="h-[190px] bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl flex-shrink-0">
           <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.4)]">img</p>
         </div>
         
         {/* コンテンツエリア */}
-        <div className="flex-1 p-4 flex flex-col">
+        <div className="flex-1 p-6 flex flex-col">
           {/* SDGsアイコン - 固定高さ */}
           <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start">
             {article.sdgs.slice(0, 6).map((sdg, index) => {
@@ -487,12 +497,12 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           </p>
           
           {/* 学年 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-3">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-4">
             {article.grade}
           </p>
           
           {/* タグ表示エリア */}
-          <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
+          <div className="flex flex-wrap gap-1.5 mb-4 min-h-[28px]">
             {article.tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
@@ -512,7 +522,7 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           </div>
           
           {/* 日付 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] text-[rgba(0,0,0,0.5)] mt-auto">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] text-[rgba(0,0,0,0.5)] mt-auto pt-2">
             {article.date}
           </p>
         </div>
@@ -523,6 +533,7 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
 
 export default function Home() {
   const navigate = useNavigate();
+  const { schoolId } = useParams<{ schoolId: string }>();
   const [filters, setFilters] = useState<FilterState>({
     sdgs: [],
     category: [],
@@ -573,8 +584,8 @@ export default function Home() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/post')}
-          className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
+          onClick={() => navigate(`/schools/${schoolId}/post`)}
+          className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
         >
           + 記事を投稿
         </button>
@@ -584,7 +595,7 @@ export default function Home() {
         {filteredArticles.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArticles.map(article => (
-              <Article key={article.id} article={article} onClick={() => navigate(`/article/${article.id}`)} />
+              <Article key={article.id} article={article} onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)} />
             ))}
           </div>
         ) : (
