@@ -1,23 +1,8 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, ChevronDown, Check } from "lucide-react";
-import { useState } from "react";
-
-// 記事データの型定義
-interface ArticleData {
-  id: number;
-  title: string;
-  sdgs: string[];
-  category: string;
-  grade: string;
-  tags: string[];
-  company?: string;
-  date: string;
-  location: {
-    lat: number;
-    lng: number;
-    name: string;
-  };
-}
+import { useEffect, useState } from "react";
+import { clearSession } from "../lib/session";
+import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
 
 interface FilterState {
   sdgs: string[];
@@ -29,103 +14,7 @@ interface FilterState {
   childActivities: boolean;
 }
 
-// 記事データ
-const articlesData: ArticleData[] = [
-  {
-    id: 1,
-    title: "みなとみらいの環境保護活動",
-    sdgs: ["13. 気候変動に具体的な対策を", "11. 住み続けられるまちづくりを"],
-    category: "環境",
-    grade: "6年1組",
-    tags: ["みなとみらい", "環境保護"],
-    company: "企業A",
-    date: "2024/01/15",
-    location: {
-      lat: 35.4593,
-      lng: 139.6317,
-      name: "横浜ランドマークタワー"
-    }
-  },
-  {
-    id: 2,
-    title: "SDGsを学ぶ地域貢献プロジェクト",
-    sdgs: ["11. 住み続けられるまちづくりを", "4. 質の高い教育をみんなに"],
-    category: "地域活動",
-    grade: "6年2組",
-    tags: ["SDGs", "地域貢献"],
-    company: "企業B",
-    date: "2024/01/18",
-    location: {
-      lat: 35.4537,
-      lng: 139.6380,
-      name: "パシフィコ横浜"
-    }
-  },
-  {
-    id: 3,
-    title: "リサイクル活動で環境を守る",
-    sdgs: ["13. 気候変動に具体的な対策を", "11. 住み続けられるまちづくりを"],
-    category: "環境",
-    grade: "5年1組",
-    tags: ["リサイクル", "環境保護", "みなとみらい"],
-    company: "企業A",
-    date: "2024/01/20",
-    location: {
-      lat: 35.4623,
-      lng: 139.6290,
-      name: "横浜赤レンガ倉庫"
-    }
-  },
-  {
-    id: 4,
-    title: "国際理解と文化交流",
-    sdgs: ["4. 質の高い教育をみんなに"],
-    category: "国際交流",
-    grade: "6年1組",
-    tags: ["国際理解", "文化交流"],
-    company: "企業C",
-    date: "2024/01/22",
-    location: {
-      lat: 35.4550,
-      lng: 139.6366,
-      name: "カップヌードルミュージアム"
-    }
-  },
-  {
-    id: 5,
-    title: "ボランティア活動で地域に貢献",
-    sdgs: ["11. 住み続けられるまちづくりを", "1. 貧困をなくそう"],
-    category: "地域活動",
-    grade: "5年2組",
-    tags: ["ボランティア", "地域貢"],
-    company: "企業B",
-    date: "2024/01/25",
-    location: {
-      lat: 35.4490,
-      lng: 139.6425,
-      name: "山下公園"
-    }
-  },
-  {
-    id: 6,
-    title: "SDGsと国際協力",
-    sdgs: ["1. 貧困をなくそう", "4. 質の高い教育をみんなに"],
-    category: "国際交流",
-    grade: "6年2組",
-    tags: ["SDGs", "環境保護", "国際理解"],
-    company: "企業C",
-    date: "2024/01/28",
-    location: {
-      lat: 35.4580,
-      lng: 139.6345,
-      name: "横浜美術館"
-    }
-  }
-];
-
-// 記事データをエクスポート
-export { articlesData };
-export type { ArticleData, FilterState };
+export type { FilterState };
 
 function Header() {
   const navigate = useNavigate();
@@ -154,7 +43,10 @@ function Header() {
           <div className="absolute -bottom-[23px] left-0 right-0 h-[3px] bg-[rgba(0,0,0,0.7)] rounded-t-full" />
         </div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            clearSession();
+            navigate('/');
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -534,6 +426,9 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
 export default function Home() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const [articles, setArticles] = useState<ArticleData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notice, setNotice] = useState("");
   const [filters, setFilters] = useState<FilterState>({
     sdgs: [],
     category: [],
@@ -570,7 +465,43 @@ export default function Home() {
     setAppliedFilters(filters);
   };
 
-  const filteredArticles = filterArticles(articlesData, appliedFilters);
+  useEffect(() => {
+    if (!schoolId) {
+      setNotice("学校IDが見つからないため、サンプル記事を表示しています。");
+      setArticles(fallbackArticles);
+      setIsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsLoading(true);
+    setNotice("");
+
+    fetchArticles(schoolId)
+      .then((list) => {
+        if (!mounted) return;
+        setArticles(list.length > 0 ? list : fallbackArticles);
+        if (list.length === 0) {
+          setNotice("DBに記事がないため、サンプル記事を表示しています。");
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setArticles(fallbackArticles);
+        setNotice("記事取得に失敗したため、サンプル記事を表示しています。");
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
+
+  const filteredArticles = filterArticles(articles, appliedFilters);
   
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="home">
@@ -592,13 +523,23 @@ export default function Home() {
       </div>
       
       <div className="ml-[250px] mt-[80px] mb-16 max-w-[calc(100vw-280px)] px-8" data-name="articles">
-        {filteredArticles.length > 0 ? (
+        {isLoading && (
+          <div className="mb-6 rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-3 text-[14px] text-[rgba(0,0,0,0.7)]">
+            記事を読み込み中です...
+          </div>
+        )}
+        {notice && (
+          <div className="mb-6 rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-3 text-[14px] text-[rgba(0,0,0,0.65)]">
+            {notice}
+          </div>
+        )}
+        {!isLoading && filteredArticles.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArticles.map(article => (
               <Article key={article.id} article={article} onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)} />
             ))}
           </div>
-        ) : (
+        ) : !isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
             <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[24px] text-[rgba(0,0,0,0.5)] mb-4">
               該当する記事が見つかりませんでした
@@ -607,7 +548,7 @@ export default function Home() {
               フィルター条件を変更してみてください
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

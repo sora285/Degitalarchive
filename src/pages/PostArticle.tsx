@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, Upload, LogOut, MapPin, Search, Check, Plus, X, ChevronDown, Tag } from "lucide-react";
-import { articlesData, ArticleData } from "./Home";
+import { clearSession } from "../lib/session";
 
 // 地図コンポーネント
 function LocationMap({ 
@@ -74,7 +74,10 @@ function Header() {
           一覧から探す
         </p>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            clearSession();
+            navigate('/');
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />

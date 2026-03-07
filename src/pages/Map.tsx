@@ -1,7 +1,8 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, MapPin } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { articlesData, ArticleData } from "./Home";
+import { clearSession } from "../lib/session";
+import { ArticleData, fetchArticles } from "../lib/articles";
 
 function Header() {
   const navigate = useNavigate();
@@ -30,7 +31,10 @@ function Header() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            clearSession();
+            navigate('/');
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -41,7 +45,7 @@ function Header() {
   );
 }
 
-function MapView() {
+function MapView({ articles }: { articles: ArticleData[] }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
   const [selectedArticle, setSelectedArticle] = useState<ArticleData | null>(null);
@@ -154,7 +158,7 @@ function MapView() {
         infoWindowRef.current = infoWindow;
 
         // 記事マーカーを配置（AdvancedMarkerElement使用）
-        articlesData.forEach((article) => {
+        articles.forEach((article) => {
           // カスタムピン要素を作成
           const pinElement = new google.maps.marker.PinElement({
             background: '#ff6464',
@@ -220,7 +224,7 @@ function MapView() {
       });
       markersRef.current = [];
     };
-  }, []);
+  }, [articles]);
 
   // フォールバック：APIキーがない場合の簡易地図表示
   if (mapError) {
@@ -264,7 +268,7 @@ function MapView() {
 
             {/* 記事マーカー（簡易版） */}
             <div className="absolute inset-0">
-              {articlesData.map((article) => {
+              {articles.map((article) => {
                 const { x, y } = latLngToPixel(article.location.lat, article.location.lng);
                 return (
                   <div
@@ -295,11 +299,11 @@ function MapView() {
             記事一覧
           </h2>
           <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.6)] mb-6">
-            {articlesData.length}件の記事
+            {articles.length}件の記事
           </p>
           
           <div className="space-y-3">
-            {articlesData.map((article) => (
+            {articles.map((article) => (
               <div
                 key={article.id}
                 onClick={() => setSelectedArticle(article)}
@@ -356,11 +360,11 @@ function MapView() {
           記事一覧
         </h2>
         <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.6)] mb-6">
-          {articlesData.length}件の記事
+          {articles.length}件の記事
         </p>
         
         <div className="space-y-3">
-          {articlesData.map((article) => (
+          {articles.map((article) => (
             <div
               key={article.id}
               onClick={() => {
@@ -413,6 +417,40 @@ function MapView() {
 export default function Map() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const [articles, setArticles] = useState<ArticleData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!schoolId) {
+      setError("学校IDが見つかりません。");
+      setIsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsLoading(true);
+    setError("");
+
+    fetchArticles(schoolId)
+      .then((list) => {
+        if (!mounted) return;
+        setArticles(list);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : "記事の取得に失敗しました。");
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
 
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] h-screen flex flex-col" data-name="map">
@@ -431,7 +469,17 @@ export default function Map() {
             </button>
           </div>
         </div>
-        <MapView />
+        {isLoading && (
+          <div className="mx-8 mb-3 rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-3 text-[14px] text-[rgba(0,0,0,0.7)]">
+            記事を読み込み中です...
+          </div>
+        )}
+        {error && (
+          <div className="mx-8 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] text-red-600">
+            {error}
+          </div>
+        )}
+        {!isLoading && <MapView articles={articles} />}
       </div>
     </div>
   );

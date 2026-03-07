@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
 import { Building2, ChevronRight } from "lucide-react";
 
 function Header() {
@@ -10,17 +11,52 @@ function Header() {
   );
 }
 
-// 学校リストとそれぞれのID
-const schools = [
-  { id: "minatomirai", name: "みなとみらい小学校", description: "横浜市中区" },
-  { id: "yokohama-port", name: "横浜港小学校", description: "横浜市中区" },
-  { id: "akarenga", name: "赤レンガ小学校", description: "横浜市中区" },
-  { id: "landmark", name: "ランドマーク小学校", description: "横浜市西区" },
-  { id: "pacifico", name: "パシフィコ小学校", description: "横浜市西区" }
-];
+type SchoolItem = {
+  id: number;
+  slug: string;
+  name: string;
+};
 
 export default function SchoolSelect() {
   const navigate = useNavigate();
+  const [schools, setSchools] = useState<SchoolItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function fetchSchools() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/schools`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setError("学校一覧の取得に失敗しました。");
+          return;
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data?.schools)) {
+          setError("学校一覧レスポンス形式が不正です。");
+          return;
+        }
+
+        setSchools(data.schools);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.error("Failed to fetch schools:", error);
+          setError("学校一覧の取得中に通信エラーが発生しました。");
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchSchools();
+    return () => controller.abort();
+  }, [apiBaseUrl]);
 
   const handleSchoolSelect = (schoolId: string, schoolName: string) => {
     // 選択した学校情報をローカルストレージに保存
@@ -47,10 +83,15 @@ export default function SchoolSelect() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {!isLoading && !error && schools.length === 0 && (
+              <div className="col-span-full rounded-xl border border-[rgba(0,0,0,0.12)] bg-white/80 px-4 py-6 text-center text-[14px] text-[rgba(0,0,0,0.65)]">
+                DBに学校データがありません。`schools` テーブルにデータを登録してください。
+              </div>
+            )}
             {schools.map((school) => (
               <div
-                key={school.id}
-                onClick={() => handleSchoolSelect(school.id, school.name)}
+                key={school.slug}
+                onClick={() => handleSchoolSelect(school.slug, school.name)}
                 className="bg-white/80 backdrop-blur-sm border-2 border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)] rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:shadow-xl hover:-translate-y-1 group"
               >
                 <div className="flex items-start justify-between">
@@ -63,7 +104,7 @@ export default function SchoolSelect() {
                         {school.name}
                       </h2>
                       <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.5)]">
-                        {school.description}
+                        ID: {school.slug}
                       </p>
                     </div>
                   </div>
@@ -75,7 +116,9 @@ export default function SchoolSelect() {
           
           <div className="mt-12 text-center">
             <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.5)]">
-              学校が見つからない場合は、管理者にお問い合わせください
+              {isLoading
+                ? "学校情報を読み込み中です..."
+                : error || "学校が見つからない場合は、管理者にお問い合わせください"}
             </p>
           </div>
         </div>
