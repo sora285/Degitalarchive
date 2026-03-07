@@ -4,14 +4,25 @@ import { ArrowLeft, LogOut } from "lucide-react";
 
 function Header() {
   const navigate = useNavigate();
+  const { schoolId } = useParams<{ schoolId: string }>();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
-      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors whitespace-nowrap" onClick={() => navigate('/home')}>みなとみらいデジタルアーカイブ</p>
+      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors whitespace-nowrap" onClick={() => navigate(`/schools/${schoolId}/home`)}>みなとみらいデジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
-        <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]">地図から探す</p>
-        <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]" onClick={() => navigate('/home')}>一覧から探す</p>
+        <p 
+          onClick={() => navigate(`/schools/${schoolId}/map`)}
+          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+        >
+          地図から探す
+        </p>
+        <p 
+          onClick={() => navigate(`/schools/${schoolId}/home`)}
+          className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
+        >
+          一覧から探す
+        </p>
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
@@ -25,7 +36,7 @@ function Header() {
 }
 
 export default function ArticleDetail() {
-  const { id } = useParams();
+  const { id, schoolId } = useParams<{ id: string; schoolId: string }>();
   const navigate = useNavigate();
 
   return (
@@ -34,7 +45,7 @@ export default function ArticleDetail() {
       
       <div className="max-w-7xl mx-auto px-8 py-12">
         <button
-          onClick={() => navigate('/home')}
+          onClick={() => navigate(`/schools/${schoolId}/home`)}
           className="mb-8 flex items-center gap-2 bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
         >
           <ArrowLeft size={18} />
