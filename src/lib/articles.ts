@@ -7,7 +7,14 @@ export interface ArticleData {
   grade: string;
   tags: string[];
   company?: string;
+  companyNames?: string[];
   date: string;
+  imageUrl?: string;
+  sdgItems?: Array<{
+    id: number;
+    label: string;
+    imageUrl?: string;
+  }>;
   location: {
     lat: number;
     lng: number;

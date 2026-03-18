@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { getArticleById, listArticlesBySchoolId } from '../services/articleService.js';
+import {
+  getArticleById,
+  getArticleImageById,
+  listArticlesBySchoolId,
+} from '../services/articleService.js';
 
 const router = Router();
 
@@ -36,6 +40,31 @@ router.get('/:id', async (req, res, next) => {
     }
 
     return res.status(200).json({ article });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id/image', async (req, res, next) => {
+  try {
+    const schoolId = String(req.query.schoolId || '');
+    const articleId = Number(req.params.id);
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    if (!Number.isFinite(articleId) || articleId <= 0) {
+      return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    const imageUrl = await getArticleImageById({ schoolId, articleId });
+    if (!imageUrl) {
+      return res.status(404).json({ message: '記事画像が見つかりません。' });
+    }
+
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    return res.redirect(302, imageUrl);
   } catch (error) {
     return next(error);
   }

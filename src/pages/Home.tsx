@@ -3,6 +3,10 @@ import { LogOut, ChevronDown, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { clearSession } from "../lib/session";
 import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
+import fixedArticleImage from "../assets/article_fixed.svg";
+
+const FIXED_ARTICLE_IMAGE = fixedArticleImage;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 interface FilterState {
   sdgs: string[];
@@ -285,7 +289,15 @@ function SideMenu({ filters, setFilters, onSearch }: {
   );
 }
 
-function Article({ article, onClick }: { article: ArticleData; onClick: () => void }) {
+function Article({
+  article,
+  onClick,
+  schoolId,
+}: {
+  article: ArticleData;
+  onClick: () => void;
+  schoolId?: string;
+}) {
   // SDGs番号を抽出
   const getSdgNumber = (sdgText: string) => {
     const match = sdgText.match(/^(\d+)\./);
@@ -295,8 +307,7 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
   // SDGsアイコンのURL取得
   const getSdgIconUrl = (sdgText: string) => {
     const num = getSdgNumber(sdgText);
-    // UN公式のSDGsアイコン（より直接的なURL）
-    return `https://www.un.org/sustainabledevelopment/wp-content/uploads/2019/08/E-WEB-Goal-${num.padStart(2, '0')}.png`;
+    return `/images/sdg_icon_${num.padStart(2, '0')}_ja_2.png`;
   };
 
   // SDGs号に応じた背景色を返す（フォールバック用）
@@ -326,32 +337,68 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
 
   return (
     <div 
-      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-[340px] h-[460px] rounded-3xl" 
+      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-full rounded-3xl" 
+      style={{ minHeight: 560 }}
       onClick={onClick}
     >
       <div className="relative h-full w-full bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
         {/* 画像エリア - 固定高さ */}
-        <div className="h-[190px] bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl flex-shrink-0">
-          <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.4)]">img</p>
+        <div
+          className="relative bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl shrink-0 overflow-hidden"
+          style={{ height: 300 }}
+        >
+          {/** 一覧はAPI経由URLを優先し、失敗時のみ固定画像へフォールバック */}
+          <img
+            src={
+              schoolId
+                ? `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`
+                : (article.imageUrl || FIXED_ARTICLE_IMAGE)
+            }
+            alt={article.title}
+            className="absolute inset-0 w-full h-full object-cover object-top"
+            loading="eager"
+            decoding="async"
+            onError={(e) => {
+              if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
+              e.currentTarget.src = FIXED_ARTICLE_IMAGE;
+            }}
+          />
         </div>
         
         {/* コンテンツエリア */}
-        <div className="flex-1 p-6 flex flex-col">
+        <div className="p-6 flex flex-col overflow-hidden flex-1" style={{ minHeight: 260 }}>
           {/* SDGsアイコン - 固定高さ */}
           <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start">
-            {article.sdgs.slice(0, 6).map((sdg, index) => {
-              const sdgNum = getSdgNumber(sdg);
-              const bgColor = getSdgColor(sdg);
+            {((article.sdgItems?.length || article.sdgs.length) === 0) && (
+              <div
+                className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 flex items-center justify-center bg-[rgba(0,0,0,0.15)]"
+                title="SDGs未設定"
+              >
+                <img
+                  src="/images/sdg_unset.svg"
+                  alt="SDGs未設定"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            {(article.sdgItems?.length
+              ? article.sdgItems.map((item) => ({ label: item.label, imageUrl: item.imageUrl || "" }))
+              : article.sdgs.map((label) => ({ label, imageUrl: "" }))
+            )
+              .slice(0, 6)
+              .map((sdg, index) => {
+              const sdgNum = getSdgNumber(sdg.label);
+              const bgColor = getSdgColor(sdg.label);
               
               return (
                 <div 
                   key={index} 
                   className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 flex items-center justify-center"
                   style={{ backgroundColor: bgColor }}
-                  title={sdg}
+                  title={sdg.label}
                 >
                   <img 
-                    src={getSdgIconUrl(sdg)}
+                    src={sdg.imageUrl || getSdgIconUrl(sdg.label)}
                     alt={`SDG ${sdgNum}`}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -369,10 +416,10 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
                 </div>
               );
             })}
-            {article.sdgs.length > 6 && (
+            {(article.sdgItems?.length || article.sdgs.length) > 6 && (
               <div className="bg-[rgba(0,0,0,0.1)] rounded w-[40px] h-[40px] flex items-center justify-center flex-shrink-0">
                 <span className="font-['Inter:Bold',sans-serif] font-bold text-[13px] text-[rgba(0,0,0,0.6)]">
-                  +{article.sdgs.length - 6}
+                  +{(article.sdgItems?.length || article.sdgs.length) - 6}
                 </span>
               </div>
             )}
@@ -384,7 +431,7 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           </h3>
           
           {/* カテゴリ */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[14px] text-[rgba(0,0,0,0.6)] truncate mb-1">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[14px] text-[rgba(0,0,0,0.7)] line-clamp-2 min-h-[42px] mb-2 px-2 py-1 rounded-lg bg-[rgba(255,209,131,0.15)]">
             {article.category}
           </p>
           
@@ -392,9 +439,13 @@ function Article({ article, onClick }: { article: ArticleData; onClick: () => vo
           <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-4">
             {article.grade}
           </p>
+
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.7)] line-clamp-2 min-h-[38px] mb-3 px-2 py-1 rounded-lg bg-[rgba(0,0,0,0.04)]">
+            関連企業様：{article.company || "未設定"}
+          </p>
           
           {/* タグ表示エリア */}
-          <div className="flex flex-wrap gap-1.5 mb-4 min-h-[28px]">
+          <div className="flex flex-wrap gap-1.5 mb-4 h-[56px] content-start overflow-hidden">
             {article.tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
@@ -536,7 +587,12 @@ export default function Home() {
         {!isLoading && filteredArticles.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArticles.map(article => (
-              <Article key={article.id} article={article} onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)} />
+              <Article
+                key={article.id}
+                article={article}
+                schoolId={schoolId}
+                onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
+              />
             ))}
           </div>
         ) : !isLoading ? (

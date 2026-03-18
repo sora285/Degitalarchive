@@ -3,6 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, LogOut } from "lucide-react";
 import { clearSession } from "../lib/session";
 import { ArticleData, fetchArticleById } from "../lib/articles";
+import fixedArticleImage from "../assets/article_fixed.svg";
+
+const FIXED_ARTICLE_IMAGE = fixedArticleImage;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 function Header() {
   const navigate = useNavigate();
@@ -46,6 +50,11 @@ export default function ArticleDetail() {
   const [article, setArticle] = useState<ArticleData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const articleImageSrc =
+    schoolId && id
+      ? `${API_BASE_URL}/api/articles/${id}/image?schoolId=${encodeURIComponent(schoolId)}`
+      : (article?.imageUrl || FIXED_ARTICLE_IMAGE);
 
   useEffect(() => {
     if (!schoolId || !id) {
@@ -113,8 +122,18 @@ export default function ArticleDetail() {
         {!isLoading && !error && article && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-3xl overflow-hidden shadow-xl h-fit">
-              <div className="bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] h-[260px] flex items-center justify-center">
-                <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[28px] text-[rgba(0,0,0,0.4)]">画像未設定</p>
+              <div className="bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] h-[260px] flex items-center justify-center overflow-hidden">
+                <img
+                  src={articleImageSrc}
+                  alt={article.title}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  onError={(e) => {
+                    if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
+                    e.currentTarget.src = FIXED_ARTICLE_IMAGE;
+                  }}
+                />
               </div>
               <div className="p-6 space-y-2">
                 <div className="bg-gradient-to-r from-[rgba(255,209,131,0.5)] to-[rgba(255,220,150,0.5)] rounded-xl px-4 py-2 inline-block mb-2">
@@ -123,7 +142,7 @@ export default function ArticleDetail() {
                 <p className="text-[16px] text-[rgba(0,0,0,0.7)]">カテゴリ: {article.category || "未設定"}</p>
                 <p className="text-[16px] text-[rgba(0,0,0,0.7)]">学年・クラス: {article.grade || "未設定"}</p>
                 <p className="text-[16px] text-[rgba(0,0,0,0.7)]">日付: {article.date || "未設定"}</p>
-                <p className="text-[16px] text-[rgba(0,0,0,0.7)]">関連企業: {article.company || "未設定"}</p>
+                <p className="text-[16px] text-[rgba(0,0,0,0.7)]">関連企業様：{article.company || "未設定"}</p>
                 <p className="text-[16px] text-[rgba(0,0,0,0.7)]">場所: {article.location?.name || "未設定"}</p>
                 <div className="flex flex-wrap gap-2 pt-2">
                   {article.tags.map((tag, index) => (

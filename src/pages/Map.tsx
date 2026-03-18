@@ -3,6 +3,10 @@ import { LogOut, MapPin } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { clearSession } from "../lib/session";
 import { ArticleData, fetchArticles } from "../lib/articles";
+import fixedArticleImage from "../assets/article_fixed.svg";
+
+const FIXED_ARTICLE_IMAGE = fixedArticleImage;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 function Header() {
   const navigate = useNavigate();
@@ -58,6 +62,14 @@ function MapView({ articles }: { articles: ArticleData[] }) {
   // みなとみらいエリアの中心座標
   const centerLat = 35.4560;
   const centerLng = 139.6345;
+
+  const getArticleImageSrc = (article: ArticleData) => {
+    if (schoolId) {
+      return `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`;
+    }
+
+    return article.imageUrl || FIXED_ARTICLE_IMAGE;
+  };
 
   // 簡易地図のフォールバック表示用
   const latLngToPixel = (lat: number, lng: number) => {
@@ -308,18 +320,33 @@ function MapView({ articles }: { articles: ArticleData[] }) {
                 key={article.id}
                 onClick={() => setSelectedArticle(article)}
                 onDoubleClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
                   selectedArticle?.id === article.id
                     ? 'border-[rgba(255,209,131,0.93)] bg-[rgba(255,209,131,0.1)] shadow-md'
                     : 'border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.5)] hover:shadow-md'
                 }`}
               >
-                <div className="flex items-start gap-2 mb-2">
-                  <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-1 flex-shrink-0" />
+                <div className="flex gap-3">
+                  <div className="relative w-[92px] h-[92px] rounded-lg overflow-hidden bg-[rgba(0,0,0,0.05)] flex-shrink-0">
+                    <img
+                      src={getArticleImageSrc(article)}
+                      alt={article.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => {
+                        if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
+                        e.currentTarget.src = FIXED_ARTICLE_IMAGE;
+                      }}
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2 mb-1">
-                      {article.title}
-                    </h3>
+                    <div className="flex items-start gap-2 mb-1">
+                      <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-0.5 flex-shrink-0" />
+                      <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2">
+                        {article.title}
+                      </h3>
+                    </div>
                     <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.6)] mb-2">
                       {article.location.name}
                     </p>
@@ -376,18 +403,33 @@ function MapView({ articles }: { articles: ArticleData[] }) {
                 }
               }}
               onDoubleClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
-              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+              className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
                 selectedArticle?.id === article.id
                   ? 'border-[rgba(255,209,131,0.93)] bg-[rgba(255,209,131,0.1)] shadow-md'
                   : 'border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.5)] hover:shadow-md'
               }`}
             >
-              <div className="flex items-start gap-2 mb-2">
-                <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-1 flex-shrink-0" />
+              <div className="flex gap-3">
+                <div className="relative w-[92px] h-[92px] rounded-lg overflow-hidden bg-[rgba(0,0,0,0.05)] flex-shrink-0">
+                  <img
+                    src={getArticleImageSrc(article)}
+                    alt={article.title}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    onError={(e) => {
+                      if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
+                      e.currentTarget.src = FIXED_ARTICLE_IMAGE;
+                    }}
+                  />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2 mb-1">
-                    {article.title}
-                  </h3>
+                  <div className="flex items-start gap-2 mb-1">
+                    <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-0.5 flex-shrink-0" />
+                    <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2">
+                      {article.title}
+                    </h3>
+                  </div>
                   <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.6)] mb-2">
                     {article.location.name}
                   </p>
