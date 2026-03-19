@@ -75,6 +75,37 @@ const companyQueryCandidates = [
   ORDER BY ac.id ASC`,
 ];
 
+const categoryQueryCandidates = [
+  `SELECT
+    ac.activity_id,
+    c.name AS category_name
+  FROM activity_categories ac
+  INNER JOIN categories c ON c.id = ac.category_id
+  WHERE ac.activity_id IN (?)
+  ORDER BY ac.id ASC`,
+  `SELECT
+    ac.article_id AS activity_id,
+    c.name AS category_name
+  FROM activity_categories ac
+  INNER JOIN categories c ON c.id = ac.category_id
+  WHERE ac.article_id IN (?)
+  ORDER BY ac.id ASC`,
+  `SELECT
+    ac.activity_id,
+    c.contents AS category_name
+  FROM activity_categories ac
+  INNER JOIN categories c ON c.id = ac.category_id
+  WHERE ac.activity_id IN (?)
+  ORDER BY ac.id ASC`,
+  `SELECT
+    ac.article_id AS activity_id,
+    c.contents AS category_name
+  FROM activity_categories ac
+  INNER JOIN categories c ON c.id = ac.category_id
+  WHERE ac.article_id IN (?)
+  ORDER BY ac.id ASC`,
+];
+
 function formatSdgLabel(sdgId) {
   const num = Number(sdgId);
   if (!Number.isFinite(num)) {
@@ -183,15 +214,54 @@ async function getActivityCompaniesMap(activityIds) {
   return new Map();
 }
 
-function rowToArticle(row, imageUrl = null, sdgs = null, sdgItems = null, companyNames = null) {
+async function getActivityCategoriesMap(activityIds) {
+  if (!activityIds.length) {
+    return new Map();
+  }
+
+  for (const query of categoryQueryCandidates) {
+    try {
+      const [rows] = await pool.query(query, [activityIds]);
+      if (!rows.length) {
+        continue;
+      }
+
+      const categoryMap = new Map();
+      for (const row of rows) {
+        if (!row.category_name) continue;
+        const activityKey = keyOf(row.activity_id);
+        if (!categoryMap.has(activityKey)) {
+          categoryMap.set(activityKey, []);
+        }
+        categoryMap.get(activityKey).push(String(row.category_name));
+      }
+
+      if (!categoryMap.size) {
+        continue;
+      }
+
+      return categoryMap;
+    } catch (error) {
+      if (error?.code === 'ER_NO_SUCH_TABLE' || error?.code === 'ER_BAD_FIELD_ERROR') {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return new Map();
+}
+
+function rowToArticle(row, imageUrl = null, sdgs = null, sdgItems = null, companyNames = null, categoryNames = null) {
   const names = companyNames || [];
+  const categories = categoryNames || [];
   return {
     id: Number(row.id),
     title: row.title || '',
     content: row.content || '',
     sdgs: sdgs || parseJsonArray(row.sdgs),
     sdgItems: sdgItems || [],
-    category: row.category || '',
+    category: categories.length ? categories.join(' / ') : (row.category || ''),
     grade: row.grade || '',
     tags: parseJsonArray(row.tags),
     company: names.length ? names.join(' / ') : (row.company || ''),
@@ -242,10 +312,11 @@ export async function listArticlesBySchoolId(schoolId) {
   );
 
   const ids = rows.map((row) => row.id);
-  const [photoMap, sdgBundle, companyMap] = await Promise.all([
+  const [photoMap, sdgBundle, companyMap, categoryMap] = await Promise.all([
     getActivityPhotoMap(ids),
     getActivitySdgsMap(ids),
     getActivityCompaniesMap(ids),
+    getActivityCategoriesMap(ids),
   ]);
   const { sdgMap, sdgItemsMap } = sdgBundle;
 
@@ -255,7 +326,8 @@ export async function listArticlesBySchoolId(schoolId) {
       photoMap.get(keyOf(row.id)),
       sdgMap.get(keyOf(row.id)) || [],
       sdgItemsMap.get(keyOf(row.id)) || [],
-      companyMap.get(keyOf(row.id)) || []
+      companyMap.get(keyOf(row.id)) || [],
+      categoryMap.get(keyOf(row.id)) || []
     )
   );
 }
@@ -295,10 +367,11 @@ export async function getArticleById({ schoolId, articleId }) {
   }
 
   const row = rows[0];
-  const [photoMap, sdgBundle, companyMap] = await Promise.all([
+  const [photoMap, sdgBundle, companyMap, categoryMap] = await Promise.all([
     getActivityPhotoMap([row.id]),
     getActivitySdgsMap([row.id]),
     getActivityCompaniesMap([row.id]),
+    getActivityCategoriesMap([row.id]),
   ]);
   const { sdgMap, sdgItemsMap } = sdgBundle;
   return rowToArticle(
@@ -306,7 +379,8 @@ export async function getArticleById({ schoolId, articleId }) {
     photoMap.get(keyOf(row.id)),
     sdgMap.get(keyOf(row.id)) || [],
     sdgItemsMap.get(keyOf(row.id)) || [],
-    companyMap.get(keyOf(row.id)) || []
+    companyMap.get(keyOf(row.id)) || [],
+    categoryMap.get(keyOf(row.id)) || []
   );
 }
 

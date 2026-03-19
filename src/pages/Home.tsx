@@ -337,8 +337,7 @@ function Article({
 
   return (
     <div 
-      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-full rounded-3xl" 
-      style={{ minHeight: 560 }}
+      className="cursor-pointer hover:-translate-y-2 hover:shadow-2xl hover:z-10 transition-all duration-300 group relative w-full rounded-3xl h-[560px]" 
       onClick={onClick}
     >
       <div className="relative h-full w-full bg-white rounded-3xl overflow-hidden shadow-lg flex flex-col">
@@ -366,9 +365,9 @@ function Article({
         </div>
         
         {/* コンテンツエリア */}
-        <div className="p-6 flex flex-col overflow-hidden flex-1" style={{ minHeight: 260 }}>
+        <div className="p-6 flex flex-col overflow-hidden flex-1 items-start text-left h-[260px]">
           {/* SDGsアイコン - 固定高さ */}
-          <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start">
+          <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start self-stretch">
             {((article.sdgItems?.length || article.sdgs.length) === 0) && (
               <div
                 className="rounded shadow-sm overflow-hidden w-[40px] h-[40px] flex-shrink-0 flex items-center justify-center bg-[rgba(0,0,0,0.15)]"
@@ -426,26 +425,26 @@ function Article({
           </div>
           
           {/* タイトル */}
-          <h3 className="font-['Inter:Regular',sans-serif] font-normal text-[18px] text-[rgba(0,0,0,0.85)] leading-tight line-clamp-2 mb-2 min-h-[44px]">
+          <h3 className="font-['Inter:Regular',sans-serif] font-normal text-[18px] text-[rgba(0,0,0,0.85)] leading-tight line-clamp-2 mb-2 min-h-[44px] w-full text-left">
             {article.title}
           </h3>
           
-          {/* カテゴリ */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[14px] text-[rgba(0,0,0,0.7)] line-clamp-2 min-h-[42px] mb-2 px-2 py-1 rounded-lg bg-[rgba(255,209,131,0.15)]">
-            {article.category}
-          </p>
-          
-          {/* 学年 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.6)] mb-4">
-            {article.grade}
-          </p>
+          <div className="w-full mb-3 space-y-2">
+            <p className="w-full min-h-[20px] font-['Inter:Regular',sans-serif] font-normal text-[13px] leading-[20px] text-[rgba(0,0,0,0.62)] text-left overflow-hidden">
+              {article.category || "未設定"}
+            </p>
 
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[13px] text-[rgba(0,0,0,0.7)] line-clamp-2 min-h-[38px] mb-3 px-2 py-1 rounded-lg bg-[rgba(0,0,0,0.04)]">
-            関連企業様：{article.company || "未設定"}
-          </p>
+            <p className="w-full min-h-[20px] font-['Inter:Regular',sans-serif] font-normal text-[13px] leading-[20px] text-[rgba(0,0,0,0.62)] text-left overflow-hidden">
+              {article.grade || "未設定"}
+            </p>
+
+            <p className="w-full min-h-[20px] font-['Inter:Regular',sans-serif] font-normal text-[13px] leading-[20px] text-[rgba(0,0,0,0.62)] line-clamp-2 text-left overflow-hidden">
+              {article.company || "未設定"}
+            </p>
+          </div>
           
           {/* タグ表示エリア */}
-          <div className="flex flex-wrap gap-1.5 mb-4 h-[56px] content-start overflow-hidden">
+          <div className="flex flex-wrap gap-1.5 mb-4 h-[56px] content-start overflow-hidden w-full justify-start">
             {article.tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
@@ -465,7 +464,7 @@ function Article({
           </div>
           
           {/* 日付 */}
-          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] text-[rgba(0,0,0,0.5)] mt-auto pt-2">
+          <p className="font-['Inter:Regular',sans-serif] font-normal text-[12px] leading-[18px] text-[rgba(0,0,0,0.5)] mt-auto pt-2 w-full text-left h-[26px]">
             {article.date}
           </p>
         </div>
