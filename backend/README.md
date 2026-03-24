@@ -22,6 +22,7 @@ Express + MariaDB 認証APIです。
 - `POST /api/auth/logout`
 - `GET /api/articles?schoolId=minatomirai`
 - `GET /api/articles/:id?schoolId=minatomirai`
+- `GET /api/companies?schoolId=minatomirai`
 
 ## DB準備
 
@@ -30,7 +31,8 @@ Express + MariaDB 認証APIです。
 3. `backend/sql/003_user_constraints.sql` を適用（推奨）
 4. `backend/sql/004_articles_schema.sql` を適用
 5. `backend/sql/005_seed_articles.sql` を適用（表示確認用）
-6. `users.password` は bcrypt ハッシュを保存
+6. `backend/sql/006_companies_school_scope.sql` を適用（companies を学校単位で管理する場合）
+7. `users.password` は bcrypt ハッシュを保存
 
 ## 注意
 

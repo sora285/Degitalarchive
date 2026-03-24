@@ -4,7 +4,7 @@ function Header() {
   return (
     <div className="absolute content-stretch flex flex-col gap-[10px] items-start left-[-11px] p-[10px] top-[-10px]" data-name="header">
       <div className="bg-[rgba(255,209,131,0.93)] h-[67px] shrink-0 w-[1513px]" />
-      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[34px]">みなとみらいデジタルアーカイブ</p>
+      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[34px]">デジタルアーカイブ</p>
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[1204px] not-italic text-[16px] text-[rgba(0,0,0,0.7)] top-[34px]">地図から探す</p>
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[1370px] not-italic text-[16px] text-[rgba(0,0,0,0.7)] top-[34px]">一覧から探す</p>
     </div>

@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, ChevronDown, Check } from "lucide-react";
 import { useEffect, useState } from "react";
-import { clearSession } from "../lib/session";
+import { clearSession, getCurrentUser } from "../lib/session";
 import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
 
@@ -15,10 +15,57 @@ interface FilterState {
   tag: string;
   company: string;
   keyword: string;
+  parentActivities: boolean;
   childActivities: boolean;
 }
 
 export type { FilterState };
+
+const DEFAULT_FILTERS: FilterState = {
+  sdgs: [],
+  category: [],
+  grade: "",
+  tag: "",
+  company: "",
+  keyword: "",
+  parentActivities: false,
+  childActivities: false,
+};
+
+function getSdgNumber(sdgText: string) {
+  const match = sdgText.match(/^(\d+)\./);
+  return match ? match[1] : "";
+}
+
+function getSdgIconUrl(sdgText: string) {
+  const num = getSdgNumber(sdgText);
+  return num ? `/images/sdg_icon_${num.padStart(2, "0")}_ja_2.png` : "";
+}
+
+const SDG_NAME_MAP: Record<string, string> = {
+  "1": "1. 貧困をなくそう",
+  "2": "2. 飢餓をゼロに",
+  "3": "3. すべての人に健康と福祉を",
+  "4": "4. 質の高い教育をみんなに",
+  "5": "5. ジェンダー平等を実現しよう",
+  "6": "6. 安全な水とトイレを世界中に",
+  "7": "7. エネルギーをみんなに そしてクリーンに",
+  "8": "8. 働きがいも経済成長も",
+  "9": "9. 産業と技術革新の基盤をつくろう",
+  "10": "10. 人や国の不平等をなくそう",
+  "11": "11. 住み続けられるまちづくりを",
+  "12": "12. つくる責任 つかう責任",
+  "13": "13. 気候変動に具体的な対策を",
+  "14": "14. 海の豊かさを守ろう",
+  "15": "15. 陸の豊かさも守ろう",
+  "16": "16. 平和と公正をすべての人に",
+  "17": "17. パートナーシップで目標を達成しよう",
+};
+
+function normalizeSdgLabel(sdgText: string) {
+  const num = getSdgNumber(sdgText);
+  return SDG_NAME_MAP[num] || sdgText;
+}
 
 function Header() {
   const navigate = useNavigate();
@@ -27,7 +74,7 @@ function Header() {
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
-      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">みなとみらいデジタルアーカイブ</p>
+      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
         <div className="relative">
           <p 
@@ -136,6 +183,7 @@ function MultiSelectFilter({ label, options, values, onChange }: {
   onChange: (values: string[]) => void 
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const isSdgFilter = label === "SDGs";
   
   const toggleOption = (option: string) => {
     if (values.includes(option)) {
@@ -184,7 +232,7 @@ function MultiSelectFilter({ label, options, values, onChange }: {
               <div
                 key={index}
                 onClick={() => toggleOption(option)}
-                className={`px-3 py-2.5 cursor-pointer text-[13px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium transition-colors flex items-center gap-2 ${
+                className={`px-3 py-2 cursor-pointer text-[13px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium transition-colors flex items-center gap-2 ${
                   values.includes(option) 
                     ? 'bg-[rgba(255,209,131,0.2)] text-[rgba(0,0,0,0.9)]' 
                     : 'text-[rgba(0,0,0,0.7)] hover:bg-[rgba(255,209,131,0.1)]'
@@ -197,7 +245,27 @@ function MultiSelectFilter({ label, options, values, onChange }: {
                 }`}>
                   {values.includes(option) && <Check size={12} className="text-[rgba(0,0,0,0.8)]" />}
                 </div>
-                <span className="flex-1 leading-tight">{option}</span>
+                {isSdgFilter ? (
+                  <div className="flex flex-1 items-center gap-1.5 min-w-0">
+                    <div
+                      className="flex-shrink-0 overflow-hidden rounded-sm border border-[rgba(0,0,0,0.08)] bg-[rgba(0,0,0,0.04)]"
+                      style={{ width: 18, height: 18 }}
+                    >
+                      <img
+                        src={getSdgIconUrl(option)}
+                        alt={option}
+                        className="block"
+                        style={{ width: 18, height: 18, objectFit: "cover" }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    </div>
+                    <span className="flex-1 leading-tight">{normalizeSdgLabel(option)}</span>
+                  </div>
+                ) : (
+                  <span className="flex-1 leading-tight">{option}</span>
+                )}
               </div>
             ))}
           </div>
@@ -207,10 +275,18 @@ function MultiSelectFilter({ label, options, values, onChange }: {
   );
 }
 
-function SideMenu({ filters, setFilters, onSearch }: { 
+function SideMenu({ filters, setFilters, onSearch, onReset, options }: {
   filters: FilterState; 
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   onSearch: () => void;
+  onReset: () => void;
+  options: {
+    sdgs: string[];
+    categories: string[];
+    grades: string[];
+    tags: string[];
+    companies: string[];
+  };
 }) {
   return (
     <div className="fixed content-stretch flex gap-[10px] h-screen items-center left-0 top-[67px] w-[230px] shadow-lg z-40" data-name="side-menu">
@@ -223,42 +299,35 @@ function SideMenu({ filters, setFilters, onSearch }: {
           label="SDGs" 
           values={filters.sdgs}
           onChange={(value) => setFilters(prev => ({ ...prev, sdgs: value }))}
-          options={[
-            "1. 貧困をなくそう",
-            "2. 飢餓をゼロに",
-            "3. すべての人に健康と福祉を",
-            "4. 質の高い教育をみんなに",
-            "11. 住み続けられるまちづくりを",
-            "13. 気候変動に具体的な対策を"
-          ]} 
+          options={options.sdgs}
         />
         
         <MultiSelectFilter 
           label="カテゴリから検索"
           values={filters.category}
           onChange={(value) => setFilters(prev => ({ ...prev, category: value }))}
-          options={["教育", "環境", "地域活動", "国際交流"]} 
+          options={options.categories}
         />
         
         <FilterSelect 
           label="学年・クラス"
           value={filters.grade}
           onChange={(value) => setFilters(prev => ({ ...prev, grade: value }))}
-          options={["5年1組", "5年2組", "6年1組", "6年2組"]} 
+          options={options.grades}
         />
         
         <FilterSelect 
           label="タグで検索"
           value={filters.tag}
           onChange={(value) => setFilters(prev => ({ ...prev, tag: value }))}
-          options={["みなとみらい", "環境保護", "SDGs", "地域貢献", "リサイクル", "国際理解", "文化交流", "ボランティア"]} 
+          options={options.tags}
         />
         
         <FilterSelect 
           label="関連企業で検索"
           value={filters.company}
           onChange={(value) => setFilters(prev => ({ ...prev, company: value }))}
-          options={["企業A", "企業B", "企業C"]} 
+          options={options.companies}
         />
         
         <div className="mb-4">
@@ -271,7 +340,14 @@ function SideMenu({ filters, setFilters, onSearch }: {
           />
         </div>
         
-        <div className="flex items-center gap-2 mt-6 mb-6 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, childActivities: !prev.childActivities }))}>
+        <div className="flex items-center gap-2 mt-6 mb-4 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, parentActivities: !prev.parentActivities }))}>
+          <div className={`bg-white border-2 border-[rgba(0,0,0,0.2)] rounded-[4px] size-[18px] flex items-center justify-center hover:border-[rgba(255,209,131,0.93)] transition-colors ${filters.parentActivities ? 'bg-[rgba(255,209,131,0.5)]' : ''}`}>
+            {filters.parentActivities && <div className="w-2 h-2 bg-[rgba(0,0,0,0.7)] rounded-sm" />}
+          </div>
+          <p className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)]">親活動から検索</p>
+        </div>
+
+        <div className="flex items-center gap-2 mb-6 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, childActivities: !prev.childActivities }))}>
           <div className={`bg-white border-2 border-[rgba(0,0,0,0.2)] rounded-[4px] size-[18px] flex items-center justify-center hover:border-[rgba(255,209,131,0.93)] transition-colors ${filters.childActivities ? 'bg-[rgba(255,209,131,0.5)]' : ''}`}>
             {filters.childActivities && <div className="w-2 h-2 bg-[rgba(0,0,0,0.7)] rounded-sm" />}
           </div>
@@ -284,6 +360,14 @@ function SideMenu({ filters, setFilters, onSearch }: {
         >
           この条件で検索
         </button>
+
+        <button
+          type="button"
+          onClick={onReset}
+          className="mt-2 w-full rounded-lg border border-[rgba(0,0,0,0.1)] bg-white py-2.5 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[13px] text-[rgba(0,0,0,0.56)] shadow-sm transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] hover:shadow-md"
+        >
+          フィルターをリセット
+        </button>
       </div>
     </div>
   );
@@ -293,22 +377,28 @@ function Article({
   article,
   onClick,
   schoolId,
+  isAdmin,
 }: {
   article: ArticleData;
   onClick: () => void;
   schoolId?: string;
+  isAdmin: boolean;
 }) {
-  // SDGs番号を抽出
-  const getSdgNumber = (sdgText: string) => {
-    const match = sdgText.match(/^(\d+)\./);
-    return match ? match[1] : '';
-  };
-
-  // SDGsアイコンのURL取得
-  const getSdgIconUrl = (sdgText: string) => {
-    const num = getSdgNumber(sdgText);
-    return `/images/sdg_icon_${num.padStart(2, '0')}_ja_2.png`;
-  };
+  const statusLabel = article.status === "draft" ? "非公開" : "公開";
+  const statusClasses =
+    article.status === "draft"
+      ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
+      : "bg-[rgba(34,197,94,0.12)] text-[rgba(22,101,52,0.92)] border-[rgba(34,197,94,0.22)]";
+  const activityRelationLabel = article.isChildActivity
+    ? "子活動"
+    : article.isParentActivity
+      ? "親活動"
+      : "単独活動";
+  const activityRelationClasses = article.isChildActivity
+    ? "bg-[rgba(59,130,246,0.12)] text-[rgba(29,78,216,0.92)] border-[rgba(59,130,246,0.22)]"
+    : article.isParentActivity
+      ? "bg-[rgba(245,158,11,0.14)] text-[rgba(146,64,14,0.92)] border-[rgba(245,158,11,0.26)]"
+      : "bg-[rgba(0,0,0,0.05)] text-[rgba(0,0,0,0.52)] border-[rgba(0,0,0,0.08)]";
 
   // SDGs号に応じた背景色を返す（フォールバック用）
   const getSdgColor = (sdgText: string) => {
@@ -366,6 +456,17 @@ function Article({
         
         {/* コンテンツエリア */}
         <div className="p-6 flex flex-col overflow-hidden flex-1 items-start text-left h-[260px]">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${activityRelationClasses}`}>
+              {activityRelationLabel}
+            </span>
+            {isAdmin && (
+              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${statusClasses}`}>
+                {statusLabel}
+              </span>
+            )}
+          </div>
+
           {/* SDGsアイコン - 固定高さ */}
           <div className="flex flex-wrap gap-2 mb-3 h-[40px] items-start self-stretch">
             {((article.sdgItems?.length || article.sdgs.length) === 0) && (
@@ -404,12 +505,11 @@ function Article({
                       // フォールバック: 画像読み込みエラー時は番号を表示
                       e.currentTarget.style.display = 'none';
                       const parent = e.currentTarget.parentElement;
-                      if (parent && !parent.querySelector('span')) {
-                        const span = document.createElement('span');
-                        span.className = "font-['Inter:Bold',sans-serif] font-bold text-[16px] text-white";
-                        span.textContent = sdgNum;
-                        parent.appendChild(span);
-                      }
+                      if (!parent || parent.querySelector('span')) return;
+                      const span = document.createElement('span');
+                      span.className = "font-['Inter:Bold',sans-serif] font-bold text-[16px] text-white";
+                      span.textContent = sdgNum;
+                      parent.appendChild(span);
                     }}
                   />
                 </div>
@@ -476,43 +576,62 @@ function Article({
 export default function Home() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser?.role === "admin";
   const [articles, setArticles] = useState<ArticleData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState("");
-  const [filters, setFilters] = useState<FilterState>({
-    sdgs: [],
-    category: [],
-    grade: "",
-    tag: "",
-    company: "",
-    keyword: "",
-    childActivities: false
-  });
-  const [appliedFilters, setAppliedFilters] = useState<FilterState>({
-    sdgs: [],
-    category: [],
-    grade: "",
-    tag: "",
-    company: "",
-    keyword: "",
-    childActivities: false
-  });
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<FilterState>(DEFAULT_FILTERS);
+
+  const splitValues = (value?: string) =>
+    String(value || "")
+      .split(" / ")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const filterOptions = {
+    sdgs: [...new Set(articles.flatMap((article) => (article.sdgItems?.length ? article.sdgItems.map((item) => normalizeSdgLabel(item.label)) : article.sdgs.map((label) => normalizeSdgLabel(label)))).filter(Boolean))].sort(),
+    categories: [...new Set(articles.flatMap((article) => splitValues(article.category)))].sort(),
+    grades: [...new Set(articles.map((article) => article.grade).filter(Boolean))].sort(),
+    tags: [...new Set(articles.flatMap((article) => article.tags).filter(Boolean))].sort(),
+    companies: [...new Set(articles.flatMap((article) => splitValues(article.company)))].sort(),
+  };
 
   // フィルタリング処理
   const filterArticles = (articles: ArticleData[], filters: FilterState) => {
     return articles.filter(article => {
-      if (filters.sdgs.length > 0 && !filters.sdgs.some(sdg => article.sdgs.includes(sdg))) return false;
-      if (filters.category.length > 0 && !filters.category.includes(article.category)) return false;
+      const articleSdgs = article.sdgItems?.length
+        ? article.sdgItems.map((item) => normalizeSdgLabel(item.label))
+        : article.sdgs.map((label) => normalizeSdgLabel(label));
+      const articleCategories = splitValues(article.category);
+      const articleCompanies = splitValues(article.company);
+
+      if (filters.sdgs.length > 0 && !filters.sdgs.some((sdg) => articleSdgs.includes(sdg))) return false;
+      if (filters.category.length > 0 && !filters.category.some((category) => articleCategories.includes(category))) return false;
       if (filters.grade && article.grade !== filters.grade) return false;
       if (filters.tag && !article.tags.includes(filters.tag)) return false;
-      if (filters.company && article.company !== filters.company) return false;
-      if (filters.keyword && !article.title.toLowerCase().includes(filters.keyword.toLowerCase())) return false;
-      return true;
+      if (filters.company && !articleCompanies.includes(filters.company)) return false;
+      if (
+        filters.keyword &&
+        !`${article.title} ${article.content} ${article.location?.name || ""}`
+          .toLowerCase()
+          .includes(filters.keyword.toLowerCase())
+      ) return false;
+      return (
+        (!filters.parentActivities || article.isParentActivity) &&
+        (!filters.childActivities || article.isChildActivity)
+      );
     });
   };
 
   const handleSearch = () => {
     setAppliedFilters(filters);
+  };
+
+  const handleResetFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setAppliedFilters(DEFAULT_FILTERS);
   };
 
   useEffect(() => {
@@ -556,7 +675,13 @@ export default function Home() {
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="home">
       <Header />
-      <SideMenu filters={filters} setFilters={setFilters} onSearch={handleSearch} />
+      <SideMenu
+        filters={filters}
+        setFilters={setFilters}
+        onSearch={handleSearch}
+        onReset={handleResetFilters}
+        options={filterOptions}
+      />
       <div className="ml-[250px] px-8 pt-4 flex items-center justify-between">
         <div>
           <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[36px] text-[rgba(0,0,0,0.8)]">記事の一覧</p>
@@ -564,12 +689,14 @@ export default function Home() {
             {filteredArticles.length}件の記事が見つかりました
           </p>
         </div>
-        <button
-          onClick={() => navigate(`/schools/${schoolId}/post`)}
-          className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
-        >
-          + 記事を投稿
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => navigate(`/schools/${schoolId}/post`)}
+            className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
+          >
+            + 記事を投稿
+          </button>
+        )}
       </div>
       
       <div className="ml-[250px] mt-[80px] mb-16 max-w-[calc(100vw-280px)] px-8" data-name="articles">
@@ -590,7 +717,12 @@ export default function Home() {
                 key={article.id}
                 article={article}
                 schoolId={schoolId}
-                onClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
+                isAdmin={Boolean(isAdmin)}
+                onClick={() =>
+                  navigate(`/schools/${schoolId}/article/${article.id}`, {
+                    state: { from: "home" },
+                  })
+                }
               />
             ))}
           </div>

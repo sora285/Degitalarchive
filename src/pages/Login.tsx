@@ -30,7 +30,7 @@ function Header({ schoolName }: { schoolName: string }) {
     <div className="fixed top-0 left-0 right-0 z-50 shadow-sm" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px]" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">
-        みなとみらいデジタルアーカイブ - {schoolName}
+        デジタルアーカイブ - {schoolName}
       </p>
     </div>
   );
@@ -76,7 +76,7 @@ export default function Login() {
       });
 
       const text = await response.text();
-      let data: LoginResponse = {};
+      let data: LoginResponse;
       try {
         data = text ? JSON.parse(text) : {};
       } catch {

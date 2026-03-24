@@ -7,10 +7,13 @@ import { checkDbConnection } from './config/db.js';
 import authRouter from './routes/auth.js';
 import schoolsRouter from './routes/schools.js';
 import articlesRouter from './routes/articles.js';
+import companiesRouter from './routes/companies.js';
+import categoriesRouter from './routes/categories.js';
+import imageLibraryRouter from './routes/imageLibrary.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { authenticateRequest } from './middleware/auth.js';
 
 const app = express();
-
 app.use(helmet());
 app.use(
   cors({
@@ -18,8 +21,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
+app.use(authenticateRequest);
 
 app.get('/', (_req, res) => {
   res.status(200).json({
@@ -35,6 +39,9 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/schools', schoolsRouter);
 app.use('/api/articles', articlesRouter);
+app.use('/api/companies', companiesRouter);
+app.use('/api/categories', categoriesRouter);
+app.use('/api/image-library', imageLibraryRouter);
 app.use(errorHandler);
 
 async function start() {

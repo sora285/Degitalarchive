@@ -33,11 +33,22 @@ declare namespace google.maps {
     map?: Map;
     title?: string;
     icon?: string | Icon | Symbol;
+    label?: string | MarkerLabel;
+  }
+
+  interface MarkerLabel {
+    text: string;
+    color?: string;
+    fontSize?: string;
+    fontWeight?: string;
+    className?: string;
   }
 
   interface Icon {
     url?: string;
     scaledSize?: Size;
+    labelOrigin?: Point;
+    anchor?: Point;
   }
 
   interface Symbol {
@@ -109,8 +120,14 @@ declare namespace google.maps {
   class Size {
     constructor(width: number, height: number);
   }
+
+  class Point {
+    constructor(x: number, y: number);
+  }
 }
 
 interface Window {
   google: typeof google;
+  gm_authFailure?: () => void;
+  __initGoogleMap?: () => void;
 }
