@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { useEffect, useState } from "react";
-import { Building2, ChevronRight } from "lucide-react";
+import { Building2 } from "lucide-react";
 
 function Header() {
   return (
@@ -19,10 +19,11 @@ type SchoolItem = {
 
 export default function SchoolSelect() {
   const navigate = useNavigate();
-  const [schools, setSchools] = useState<SchoolItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [schoolName, setSchoolName] = useState("");
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+  const publicSchoolId = import.meta.env.VITE_PUBLIC_SCHOOL_ID || "";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -43,7 +44,20 @@ export default function SchoolSelect() {
           return;
         }
 
-        setSchools(data.schools);
+        const schools = data.schools as SchoolItem[];
+        if (schools.length === 0) {
+          setError("公開表示できる学校が見つかりません。");
+          return;
+        }
+
+        const preferredSchoolId = localStorage.getItem("currentSchoolId") || publicSchoolId;
+        const selectedSchool =
+          schools.find((school) => school.slug === preferredSchoolId) || schools[0];
+
+        localStorage.setItem("currentSchoolId", selectedSchool.slug);
+        localStorage.setItem("currentSchoolName", selectedSchool.name);
+        setSchoolName(selectedSchool.name);
+        navigate(`/schools/${selectedSchool.slug}/home`, { replace: true });
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           console.error("Failed to fetch schools:", error);
@@ -58,67 +72,36 @@ export default function SchoolSelect() {
     return () => controller.abort();
   }, [apiBaseUrl]);
 
-  const handleSchoolSelect = (schoolId: string, schoolName: string) => {
-    // 選択した学校情報をローカルストレージに保存
-    localStorage.setItem('currentSchoolId', schoolId);
-    localStorage.setItem('currentSchoolName', schoolName);
-    
-    // 学校のログインページへ遷移
-    navigate(`/schools/${schoolId}`);
-  };
-
   return (
     <div className="bg-gradient-to-br from-[#fff5e0] to-white relative min-h-screen" data-name="school-select">
       <Header />
       
       <div className="flex flex-col items-center justify-center min-h-screen pt-16 px-4">
-        <div className="max-w-3xl w-full mt-8">
+        <div className="max-w-xl w-full mt-8">
           <div className="text-center mb-12">
             <h1 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[42px] text-[rgba(0,0,0,0.8)] mb-4">
-              学校を選択してください
+              公開記事を表示しています
             </h1>
             <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[16px] text-[rgba(0,0,0,0.6)]">
-              ご利用の学校を選択してログインしてください
+              保護者の方は、お子さまの学校の記事だけをご覧いただけます
             </p>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {!isLoading && !error && schools.length === 0 && (
-              <div className="col-span-full rounded-xl border border-[rgba(0,0,0,0.12)] bg-white/80 px-4 py-6 text-center text-[14px] text-[rgba(0,0,0,0.65)]">
-                DBに学校データがありません。`schools` テーブルにデータを登録してください。
-              </div>
-            )}
-            {schools.map((school) => (
-              <div
-                key={school.slug}
-                onClick={() => handleSchoolSelect(school.slug, school.name)}
-                className="bg-white/80 backdrop-blur-sm border-2 border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)] rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:shadow-xl hover:-translate-y-1 group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="bg-gradient-to-br from-[rgba(255,209,131,0.3)] to-[rgba(255,220,150,0.3)] rounded-xl p-3 group-hover:from-[rgba(255,209,131,0.5)] group-hover:to-[rgba(255,220,150,0.5)] transition-all">
-                      <Building2 size={28} className="text-[rgba(0,0,0,0.6)]" />
-                    </div>
-                    <div>
-                      <h2 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.85)] mb-1 group-hover:text-[rgba(0,0,0,0.95)] transition-colors">
-                        {school.name}
-                      </h2>
-                      <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.5)]">
-                        ID: {school.slug}
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight size={24} className="text-[rgba(0,0,0,0.3)] group-hover:text-[rgba(0,0,0,0.6)] group-hover:translate-x-1 transition-all" />
-                </div>
-              </div>
-            ))}
+
+          <div className="rounded-3xl border border-[rgba(0,0,0,0.12)] bg-white/85 p-10 text-center shadow-xl">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[rgba(255,209,131,0.3)] to-[rgba(255,220,150,0.3)]">
+              <Building2 size={28} className="text-[rgba(0,0,0,0.6)]" />
+            </div>
+            <p className="text-[18px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.8)]">
+              {isLoading ? "学校ページを準備しています..." : schoolName || "学校ページへ移動します"}
+            </p>
+            <p className="mt-3 text-[14px] text-[rgba(0,0,0,0.55)]">
+              {error || "この端末では対象の学校だけを表示します"}
+            </p>
           </div>
           
           <div className="mt-12 text-center">
             <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.5)]">
-              {isLoading
-                ? "学校情報を読み込み中です..."
-                : error || "学校が見つからない場合は、管理者にお問い合わせください"}
+              {isLoading ? "学校情報を読み込み中です..." : error || "教員の方は公開ページ下部のログインリンクをご利用ください"}
             </p>
           </div>
         </div>

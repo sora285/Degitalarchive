@@ -42,3 +42,16 @@ export function requireAdmin(req, res, next) {
 
   return next();
 }
+
+export function requireAuthenticated(req, res, next) {
+  if (!req.auth) {
+    return res.status(401).json({ message: 'ログインが必要です。' });
+  }
+
+  const requestedSchoolId = String(req.body?.schoolId || req.query?.schoolId || '');
+  if (requestedSchoolId && req.auth.schoolId !== requestedSchoolId) {
+    return res.status(403).json({ message: '他校の操作はできません。' });
+  }
+
+  return next();
+}

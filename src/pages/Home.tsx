@@ -9,6 +9,7 @@ const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 interface FilterState {
+  fiscalYear: string;
   sdgs: string[];
   category: string[];
   grade: string;
@@ -21,7 +22,22 @@ interface FilterState {
 
 export type { FilterState };
 
+const CURRENT_FISCAL_YEAR_OVERRIDE = 2025;
+const CURRENT_FISCAL_YEAR_OVERRIDE_START = new Date("2026-04-01T00:00:00+09:00");
+
+function getFiscalYearFromDate(date: Date) {
+  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+}
+
+function getCurrentOperationalFiscalYearLabel(now = new Date()) {
+  const fiscalYear = now >= CURRENT_FISCAL_YEAR_OVERRIDE_START
+    ? CURRENT_FISCAL_YEAR_OVERRIDE
+    : getFiscalYearFromDate(now);
+  return `${fiscalYear}年度`;
+}
+
 const DEFAULT_FILTERS: FilterState = {
+  fiscalYear: getCurrentOperationalFiscalYearLabel(),
   sdgs: [],
   category: [],
   grade: "",
@@ -70,12 +86,18 @@ function normalizeSdgLabel(sdgText: string) {
 function Header() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
+        {currentUser && (
+          <p className="text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.62)] whitespace-nowrap">
+            {currentUser.name}さんこんにちは
+          </p>
+        )}
         <div className="relative">
           <p 
             onClick={() => navigate(`/schools/${schoolId}/map`)}
@@ -93,16 +115,18 @@ function Header() {
           </p>
           <div className="absolute -bottom-[23px] left-0 right-0 h-[3px] bg-[rgba(0,0,0,0.7)] rounded-t-full" />
         </div>
-        <button
-          onClick={() => {
-            clearSession();
-            navigate('/');
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
-          <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
-        </button>
+        {currentUser && (
+          <button
+            onClick={() => {
+              clearSession();
+              navigate('/');
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
+          >
+            <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
+            <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -275,18 +299,21 @@ function MultiSelectFilter({ label, options, values, onChange }: {
   );
 }
 
-function SideMenu({ filters, setFilters, onSearch, onReset, options }: {
+function SideMenu({ filters, setFilters, onSearch, onReset, options, showTeacherLogin, onTeacherLogin }: {
   filters: FilterState; 
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   onSearch: () => void;
   onReset: () => void;
   options: {
+    fiscalYears: string[];
     sdgs: string[];
     categories: string[];
     grades: string[];
     tags: string[];
     companies: string[];
   };
+  showTeacherLogin: boolean;
+  onTeacherLogin: () => void;
 }) {
   return (
     <div className="fixed content-stretch flex gap-[10px] h-screen items-center left-0 top-[67px] w-[230px] shadow-lg z-40" data-name="side-menu">
@@ -300,6 +327,13 @@ function SideMenu({ filters, setFilters, onSearch, onReset, options }: {
           values={filters.sdgs}
           onChange={(value) => setFilters(prev => ({ ...prev, sdgs: value }))}
           options={options.sdgs}
+        />
+
+        <FilterSelect
+          label="年度で検索"
+          value={filters.fiscalYear}
+          onChange={(value) => setFilters(prev => ({ ...prev, fiscalYear: value }))}
+          options={options.fiscalYears}
         />
         
         <MultiSelectFilter 
@@ -368,6 +402,16 @@ function SideMenu({ filters, setFilters, onSearch, onReset, options }: {
         >
           フィルターをリセット
         </button>
+
+        {showTeacherLogin && (
+          <button
+            type="button"
+            onClick={onTeacherLogin}
+            className="mt-6 block w-full cursor-pointer text-left text-[12px] text-[rgba(0,0,0,0.48)] underline decoration-[rgba(0,0,0,0.2)] underline-offset-4 transition-colors hover:text-[rgba(0,0,0,0.72)]"
+          >
+            教員の方はこちらからログイン
+          </button>
+        )}
       </div>
     </div>
   );
@@ -377,14 +421,14 @@ function Article({
   article,
   onClick,
   schoolId,
-  isAdmin,
+  canViewStatus,
 }: {
   article: ArticleData;
   onClick: () => void;
   schoolId?: string;
-  isAdmin: boolean;
+  canViewStatus: boolean;
 }) {
-  const statusLabel = article.status === "draft" ? "非公開" : "公開";
+  const statusLabel = article.status === "draft" ? "未承認" : "承認済み";
   const statusClasses =
     article.status === "draft"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
@@ -460,7 +504,7 @@ function Article({
             <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${activityRelationClasses}`}>
               {activityRelationLabel}
             </span>
-            {isAdmin && (
+            {canViewStatus && (
               <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${statusClasses}`}>
                 {statusLabel}
               </span>
@@ -541,6 +585,9 @@ function Article({
             <p className="w-full min-h-[20px] font-['Inter:Regular',sans-serif] font-normal text-[13px] leading-[20px] text-[rgba(0,0,0,0.62)] line-clamp-2 text-left overflow-hidden">
               {article.company || "未設定"}
             </p>
+            <p className="w-full min-h-[20px] font-['Inter:Regular',sans-serif] font-normal text-[13px] leading-[20px] text-[rgba(0,0,0,0.62)] text-left overflow-hidden">
+              {article.fiscalYear || "年度未設定"}
+            </p>
           </div>
           
           {/* タグ表示エリア */}
@@ -578,9 +625,12 @@ export default function Home() {
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
+  const canPostArticle = Boolean(currentUser);
+  const canViewStatus = Boolean(currentUser);
   const [articles, setArticles] = useState<ArticleData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [isPendingListOpen, setIsPendingListOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
@@ -591,6 +641,7 @@ export default function Home() {
       .filter(Boolean);
 
   const filterOptions = {
+    fiscalYears: [...new Set(articles.map((article) => article.fiscalYear).filter(Boolean))].sort().reverse(),
     sdgs: [...new Set(articles.flatMap((article) => (article.sdgItems?.length ? article.sdgItems.map((item) => normalizeSdgLabel(item.label)) : article.sdgs.map((label) => normalizeSdgLabel(label)))).filter(Boolean))].sort(),
     categories: [...new Set(articles.flatMap((article) => splitValues(article.category)))].sort(),
     grades: [...new Set(articles.map((article) => article.grade).filter(Boolean))].sort(),
@@ -607,6 +658,7 @@ export default function Home() {
       const articleCategories = splitValues(article.category);
       const articleCompanies = splitValues(article.company);
 
+      if (filters.fiscalYear && article.fiscalYear !== filters.fiscalYear) return false;
       if (filters.sdgs.length > 0 && !filters.sdgs.some((sdg) => articleSdgs.includes(sdg))) return false;
       if (filters.category.length > 0 && !filters.category.some((category) => articleCategories.includes(category))) return false;
       if (filters.grade && article.grade !== filters.grade) return false;
@@ -671,6 +723,7 @@ export default function Home() {
   }, [schoolId]);
 
   const filteredArticles = filterArticles(articles, appliedFilters);
+  const pendingArticles = articles.filter((article) => article.status === "draft");
   
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="home">
@@ -681,6 +734,8 @@ export default function Home() {
         onSearch={handleSearch}
         onReset={handleResetFilters}
         options={filterOptions}
+        showTeacherLogin={!currentUser}
+        onTeacherLogin={() => navigate(`/schools/${schoolId}`)}
       />
       <div className="ml-[250px] px-8 pt-4 flex items-center justify-between">
         <div>
@@ -689,7 +744,7 @@ export default function Home() {
             {filteredArticles.length}件の記事が見つかりました
           </p>
         </div>
-        {isAdmin && (
+        {canPostArticle && (
           <button
             onClick={() => navigate(`/schools/${schoolId}/post`)}
             className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
@@ -710,6 +765,73 @@ export default function Home() {
             {notice}
           </div>
         )}
+        {isAdmin && !isLoading && (
+          <div className="mb-8 rounded-3xl border border-[rgba(185,28,28,0.14)] bg-white/90 p-6 shadow-lg">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[24px] text-[rgba(0,0,0,0.82)]">
+                  未承認一覧
+                </p>
+                <p className="mt-1 text-[14px] text-[rgba(0,0,0,0.52)]">
+                  承認待ちの記事をここから確認できます
+                </p>
+              </div>
+              <span className="rounded-full bg-[rgba(220,38,38,0.1)] px-4 py-2 text-[13px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(185,28,28,0.9)]">
+                {pendingArticles.length}件
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsPendingListOpen((prev) => !prev)}
+              className="mt-5 rounded-xl border border-[rgba(0,0,0,0.08)] bg-[rgba(255,250,240,0.8)] px-4 py-3 text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.72)] transition-all duration-200 hover:border-[rgba(255,209,131,0.6)] hover:bg-[rgba(255,247,234,1)]"
+            >
+              {isPendingListOpen ? "未承認一覧を閉じる" : "未承認一覧を表示"}
+            </button>
+
+            {isPendingListOpen && (
+              pendingArticles.length === 0 ? (
+                <div className="mt-5 rounded-2xl bg-[rgba(0,0,0,0.03)] px-4 py-5 text-[14px] text-[rgba(0,0,0,0.52)]">
+                  現在、未承認の記事はありません。
+                </div>
+              ) : (
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {pendingArticles.map((article) => (
+                    <button
+                      key={article.id}
+                      type="button"
+                      onClick={() =>
+                        navigate(`/schools/${schoolId}/article/${article.id}`, {
+                          state: { from: "home" },
+                        })
+                      }
+                      className="rounded-2xl border border-[rgba(0,0,0,0.08)] bg-[rgba(255,250,240,0.8)] px-4 py-4 text-left transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(255,209,131,0.6)] hover:shadow-md"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="rounded-full bg-[rgba(220,38,38,0.1)] px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(185,28,28,0.9)]">
+                          未承認
+                        </span>
+                        <span className="text-[11px] text-[rgba(0,0,0,0.45)]">
+                          {article.fiscalYear || "年度未設定"}
+                        </span>
+                      </div>
+                      <p className="mt-3 line-clamp-2 text-[15px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.8)]">
+                        {article.title || "無題の記事"}
+                      </p>
+                      <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-[rgba(0,0,0,0.56)]">
+                        {article.content || "本文は未入力です"}
+                      </p>
+                      <div className="mt-3 flex items-center justify-between text-[12px] text-[rgba(0,0,0,0.45)]">
+                        <span>{article.grade || "学年未設定"}</span>
+                        <span>{article.date || "日付未設定"}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
         {!isLoading && filteredArticles.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArticles.map(article => (
@@ -717,7 +839,7 @@ export default function Home() {
                 key={article.id}
                 article={article}
                 schoolId={schoolId}
-                isAdmin={Boolean(isAdmin)}
+                canViewStatus={canViewStatus}
                 onClick={() =>
                   navigate(`/schools/${schoolId}/article/${article.id}`, {
                     state: { from: "home" },

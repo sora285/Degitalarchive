@@ -59,12 +59,18 @@ function LocationMap({
 function Header() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors whitespace-nowrap" onClick={() => navigate(`/schools/${schoolId}/home`)}>デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
+        {currentUser && (
+          <p className="text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.62)] whitespace-nowrap">
+            {currentUser.name}さんこんにちは
+          </p>
+        )}
         <p 
           onClick={() => navigate(`/schools/${schoolId}/map`)}
           className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
@@ -77,16 +83,20 @@ function Header() {
         >
           一覧から探す
         </p>
-        <button
-          onClick={() => {
-            clearSession();
-            navigate('/');
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
-          <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
-        </button>
+        {currentUser && (
+          <>
+            <button
+              onClick={() => {
+                clearSession();
+                navigate('/');
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
+              <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -98,6 +108,8 @@ export default function PostArticle() {
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
+  const canEditPublishedArticle = isAdmin;
+  const canUsePostEditor = Boolean(currentUser);
   const editingArticleId = Number(searchParams.get("articleId") || 0);
   const isEditMode = Number.isFinite(editingArticleId) && editingArticleId > 0;
   const [title, setTitle] = useState("");
@@ -176,13 +188,7 @@ export default function PostArticle() {
     { id: "6-2", label: "6年2組" },
   ];
 
-  useEffect(() => {
-    if (isAdmin) {
-      return;
-    }
-
-    setPageError("管理者のみ記事を投稿・編集できます。");
-  }, [isAdmin]);
+  const primarySubmitStatus: "draft" | "published" = isAdmin ? "published" : "draft";
 
   useEffect(() => {
     if (!schoolId) {
@@ -206,7 +212,7 @@ export default function PostArticle() {
   }, [schoolId]);
 
   useEffect(() => {
-    if (!schoolId || !isAdmin) {
+    if (!schoolId || !canUsePostEditor) {
       return;
     }
 
@@ -235,7 +241,7 @@ export default function PostArticle() {
   }, [schoolId, isAdmin, editingArticleId, currentUser?.id]);
 
   useEffect(() => {
-    if (!schoolId || !isEditMode || !isAdmin) {
+    if (!schoolId || !isEditMode || !canUsePostEditor) {
       return;
     }
 
@@ -246,6 +252,10 @@ export default function PostArticle() {
     fetchArticleById(schoolId, editingArticleId)
       .then((article) => {
         if (!mounted) return;
+        if (!canEditPublishedArticle && article.status !== "draft") {
+          setPageError("一般教員は非公開の記事のみ編集できます。");
+          return;
+        }
         setTitle(article.title || "");
         setContent(article.content || "");
         setClassInfo(article.grade || "");
@@ -279,7 +289,7 @@ export default function PostArticle() {
     return () => {
       mounted = false;
     };
-  }, [schoolId, editingArticleId, isEditMode, isAdmin]);
+  }, [schoolId, editingArticleId, isEditMode, canUsePostEditor, canEditPublishedArticle]);
 
   useEffect(() => {
     if (!schoolId) {
@@ -472,14 +482,13 @@ export default function PostArticle() {
       return;
     }
 
-    if (currentUser.role !== "admin") {
-      alert("管理者のみ記事を投稿・編集できます。");
-      return;
-    }
-
     if (status === "published" && !title.trim()) {
       alert("公開するには記事タイトルが必要です。");
       return;
+    }
+
+    if (!isAdmin) {
+      status = "draft";
     }
 
     setSubmitMode(status);
@@ -557,7 +566,7 @@ export default function PostArticle() {
               <ArrowLeft size={20} />
               <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px]">一覧に戻る</span>
             </button>
-            {isAdmin && (
+            {canUsePostEditor && (
               <button
                 type="button"
                 onClick={() => setIsDraftListOpen(true)}
@@ -570,7 +579,7 @@ export default function PostArticle() {
 
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-10 border border-[rgba(0,0,0,0.1)]">
             <h1 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[36px] text-[rgba(0,0,0,0.8)] mb-8">
-              {isEditMode ? "記事を編集" : "記事を投稿"}
+              {isEditMode ? "記事を編集" : "記事を作成"}
             </h1>
 
             {pageError && (
@@ -588,7 +597,7 @@ export default function PostArticle() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void handleSaveArticle("published");
+                void handleSaveArticle(primarySubmitStatus);
               }}
               className="flex flex-col gap-7"
             >
@@ -1046,13 +1055,17 @@ export default function PostArticle() {
                   disabled={isSubmitting}
                   className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl py-4 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.7)] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting && submitMode === "published"
+                  {isSubmitting && submitMode === primarySubmitStatus
                     ? isEditMode
                       ? "更新中..."
-                      : "投稿中..."
-                    : isEditMode
-                      ? "公開内容を更新"
-                      : "投稿する"}
+                      : "登録中..."
+                    : isAdmin
+                      ? isEditMode
+                        ? "公開内容を更新"
+                        : "公開して登録"
+                      : isEditMode
+                        ? "非公開記事を更新"
+                        : "非公開記事を登録"}
                 </button>
               </div>
             </form>

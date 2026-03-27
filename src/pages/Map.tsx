@@ -76,12 +76,18 @@ function buildMarkerIcon(title: string, showLabel: boolean) {
 function Header() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
+        {currentUser && (
+          <p className="text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.62)] whitespace-nowrap">
+            {currentUser.name}さんこんにちは
+          </p>
+        )}
         <div className="relative">
           <p 
             onClick={() => navigate(`/schools/${schoolId}/map`)}
@@ -99,16 +105,18 @@ function Header() {
             一覧から探す
           </p>
         </div>
-        <button
-          onClick={() => {
-            clearSession();
-            navigate('/');
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
-          <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
-        </button>
+        {currentUser && (
+          <button
+            onClick={() => {
+              clearSession();
+              navigate('/');
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
+          >
+            <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
+            <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -118,7 +126,7 @@ function MapView({ articles }: { articles: ArticleData[] }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser();
-  const isAdmin = currentUser?.role === "admin";
+  const canViewStatus = Boolean(currentUser);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
@@ -139,7 +147,7 @@ function MapView({ articles }: { articles: ArticleData[] }) {
     return article.imageUrl || FIXED_ARTICLE_IMAGE;
   };
 
-  const getStatusLabel = (article: ArticleData) => (article.status === "draft" ? "非公開" : "公開");
+  const getStatusLabel = (article: ArticleData) => (article.status === "draft" ? "未承認" : "承認済み");
   const getActivityRelationLabel = (article: ArticleData) =>
     article.isChildActivity ? "子活動" : article.isParentActivity ? "親活動" : "単独活動";
 
@@ -288,7 +296,7 @@ function MapView({ articles }: { articles: ArticleData[] }) {
                   <span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">
                     ${getActivityRelationLabel(article)}
                   </span>
-                  ${isAdmin ? `<span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">${getStatusLabel(article)}</span>` : ""}
+                  ${canViewStatus ? `<span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">${getStatusLabel(article)}</span>` : ""}
                 </div>
                 <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;line-height:1.4;color:rgba(0,0,0,0.84);">
                   ${article.title}
@@ -460,7 +468,7 @@ export default function Map() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser();
-  const isAdmin = currentUser?.role === "admin";
+  const canPostArticle = Boolean(currentUser);
   const [articles, setArticles] = useState<ArticleData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -500,7 +508,7 @@ export default function Map() {
     <div className="bg-gradient-to-br from-white to-[#fffaf0] h-screen flex flex-col" data-name="map">
       <Header />
       <div className="relative flex-1 pt-[67px] flex flex-col">
-        {isAdmin && (
+        {canPostArticle && (
           <div className="pointer-events-none absolute right-8 top-[91px] z-30">
             <button
               onClick={() => navigate(`/schools/${schoolId}/post`)}

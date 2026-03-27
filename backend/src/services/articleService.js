@@ -14,8 +14,34 @@ const s3Client = new S3Client({
       : undefined,
 });
 
+const CURRENT_FISCAL_YEAR_OVERRIDE = 2025;
+const CURRENT_FISCAL_YEAR_OVERRIDE_START = new Date('2026-04-01T00:00:00+09:00');
+
 function keyOf(value) {
   return String(value);
+}
+
+function getFiscalYearFromDate(date) {
+  const year = date.getFullYear();
+  return date.getMonth() >= 3 ? year : year - 1;
+}
+
+function getCurrentOperationalFiscalYear(now = new Date()) {
+  if (now >= CURRENT_FISCAL_YEAR_OVERRIDE_START) {
+    return CURRENT_FISCAL_YEAR_OVERRIDE;
+  }
+
+  return getFiscalYearFromDate(now);
+}
+
+function getPostingDateForFiscalYear(now = new Date()) {
+  const fiscalYear = getCurrentOperationalFiscalYear(now);
+  return new Date(Date.UTC(fiscalYear, 3, 1, 0, 0, 0));
+}
+
+function formatFiscalYearLabel(fiscalYear) {
+  const normalizedYear = Number(fiscalYear);
+  return Number.isFinite(normalizedYear) ? `${normalizedYear}年度` : '';
 }
 
 function parseJsonArray(value) {
@@ -29,6 +55,7 @@ function parseJsonArray(value) {
 }
 
 const sdgQueryCandidates = [
+  /* language=MySQL */
   `SELECT
     asg.activity_id,
     s.id AS sdg_id,
@@ -38,6 +65,7 @@ const sdgQueryCandidates = [
   INNER JOIN sdgs s ON s.id = asg.sdg_id
   WHERE asg.activity_id IN (?)
   ORDER BY asg.id ASC`,
+  /* language=MySQL */
   `SELECT
     asg.activity_id,
     s.id AS sdg_id,
@@ -47,11 +75,12 @@ const sdgQueryCandidates = [
   INNER JOIN sdgs s ON s.id = asg.sdg_id
   WHERE asg.activity_id IN (?)
   ORDER BY asg.id ASC`,
-  'SELECT activity_id, sdg_id FROM activity_sdgs WHERE activity_id IN (?) ORDER BY id ASC',
-  'SELECT activity_id, goal_id AS sdg_id FROM activity_sdgs WHERE activity_id IN (?) ORDER BY id ASC',
+  /* language=MySQL */ 'SELECT activity_id, sdg_id FROM activity_sdgs WHERE activity_id IN (?) ORDER BY id ASC',
+  /* language=MySQL */ 'SELECT activity_id, goal_id AS sdg_id FROM activity_sdgs WHERE activity_id IN (?) ORDER BY id ASC',
 ];
 
 const companyQueryCandidates = [
+  /* language=MySQL */
   `SELECT
     ac.activity_id,
     c.contents AS company_name
@@ -59,6 +88,7 @@ const companyQueryCandidates = [
   INNER JOIN companies c ON c.id = ac.company_id
   WHERE ac.activity_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.article_id AS activity_id,
     c.contents AS company_name
@@ -66,6 +96,7 @@ const companyQueryCandidates = [
   INNER JOIN companies c ON c.id = ac.company_id
   WHERE ac.article_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.activity_id,
     c.name AS company_name
@@ -73,6 +104,7 @@ const companyQueryCandidates = [
   INNER JOIN companies c ON c.id = ac.company_id
   WHERE ac.activity_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.activity_id,
     c.contents AS company_name
@@ -80,6 +112,7 @@ const companyQueryCandidates = [
   INNER JOIN companies c ON c.id = ac.companies_id
   WHERE ac.activity_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.article_id AS activity_id,
     c.contents AS company_name
@@ -90,6 +123,7 @@ const companyQueryCandidates = [
 ];
 
 const categoryQueryCandidates = [
+  /* language=MySQL */
   `SELECT
     ac.activity_id,
     c.name AS category_name
@@ -97,6 +131,7 @@ const categoryQueryCandidates = [
   INNER JOIN categories c ON c.id = ac.category_id
   WHERE ac.activity_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.article_id AS activity_id,
     c.name AS category_name
@@ -104,6 +139,7 @@ const categoryQueryCandidates = [
   INNER JOIN categories c ON c.id = ac.category_id
   WHERE ac.article_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.activity_id,
     c.contents AS category_name
@@ -111,6 +147,7 @@ const categoryQueryCandidates = [
   INNER JOIN categories c ON c.id = ac.category_id
   WHERE ac.activity_id IN (?)
   ORDER BY ac.id ASC`,
+  /* language=MySQL */
   `SELECT
     ac.article_id AS activity_id,
     c.contents AS category_name
@@ -134,6 +171,7 @@ async function getActivityPhotoMap(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT activity_id, url
      FROM activity_images
      WHERE activity_id IN (?)
@@ -158,6 +196,7 @@ async function getActivityPhotoUrlsMap(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT activity_id, url
      FROM activity_images
      WHERE activity_id IN (?)
@@ -225,6 +264,7 @@ async function getActivitySdgIdsMap(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT activity_id, sdg_id
      FROM activity_sdgs
      WHERE activity_id IN (?)
@@ -284,6 +324,7 @@ async function getActivityCompanyIdsMap(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT activity_id, company_id
      FROM activity_companies
      WHERE activity_id IN (?)
@@ -346,6 +387,7 @@ async function getActivityCategoryIdsMap(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT activity_id, category_id
      FROM activity_categories
      WHERE activity_id IN (?)
@@ -378,6 +420,7 @@ function rowToArticle(
 ) {
   const names = companyNames || [];
   const categories = categoryNames || [];
+  const articleDate = row.date ? new Date(String(row.date).replace(/\//g, '-')) : null;
   return {
     id: Number(row.id),
     authorUserId: row.author_user_id == null ? null : Number(row.author_user_id),
@@ -397,6 +440,9 @@ function rowToArticle(
     companyIds: companyIds || [],
     sdgIds: sdgIds || [],
     date: row.date || '',
+    fiscalYear: articleDate && !Number.isNaN(articleDate.getTime())
+      ? formatFiscalYearLabel(getFiscalYearFromDate(articleDate))
+      : '',
     imageUrl: imageUrl || '',
     imageUrls: imageUrls || (imageUrl ? [imageUrl] : []),
     location: {
@@ -509,6 +555,7 @@ async function hydrateArticleRowsByIds(activityIds) {
   }
 
   const [rows] = await pool.query(
+    /* language=MySQL */
     `SELECT
       a.id,
       a.author_user_id,
@@ -559,6 +606,7 @@ async function ensureActivityBelongsToSchool(connection, { activityId, schoolDbI
   }
 
   const [rows] = await connection.execute(
+    /* language=MySQL */
     `SELECT id
      FROM activities
      WHERE id = ?
@@ -578,6 +626,7 @@ async function ensureActivityBelongsToSchool(connection, { activityId, schoolDbI
 export async function listArticlesBySchoolId(schoolId, options = {}) {
   const includeDrafts = Boolean(options.includeDrafts);
   const [rows] = await pool.execute(
+    /* language=MySQL */
     `SELECT
       a.id,
       a.author_user_id,
@@ -625,6 +674,7 @@ export async function listArticlesBySchoolId(schoolId, options = {}) {
 
 export async function getArticleById({ schoolId, articleId, includeDraftRelations = false }) {
   const [rows] = await pool.execute(
+    /* language=MySQL */
     `SELECT
       a.id,
       a.author_user_id,
@@ -674,6 +724,7 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
     getActivitySdgIdsMap([row.id]),
   ]);
   const [childRows] = await pool.execute(
+    /* language=MySQL */
     `SELECT
       a.id,
       a.author_user_id,
@@ -732,6 +783,7 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
 
 export async function getArticleImageById({ schoolId, articleId }) {
   const [rows] = await pool.execute(
+    /* language=MySQL */
     `SELECT ai.url
      FROM activities a
      INNER JOIN schools s ON s.id = a.school_id
@@ -783,7 +835,7 @@ export async function createArticle({
   }
 
   const [schoolRows] = await pool.execute(
-    'SELECT id FROM schools WHERE slug = ? LIMIT 1',
+    /* language=MySQL */ 'SELECT id FROM schools WHERE slug = ? LIMIT 1',
     [schoolId]
   );
 
@@ -793,14 +845,16 @@ export async function createArticle({
 
   const schoolRow = schoolRows[0];
   const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const postingDate = getPostingDateForFiscalYear(now);
+  const yearMonth = `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}`;
+  const postingDateString = `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}-${String(postingDate.getUTCDate()).padStart(2, '0')}`;
   const uploadedImageUrls = await persistUploadedImages(uploadedImages);
   const imageUrls = [...libraryImageUrls, ...uploadedImageUrls].filter(Boolean);
   const uniqueImageUrls = [...new Set(imageUrls)];
   let normalizedParentActivityId = normalizeOptionalNumericValue(parentActivityId);
   const normalizedChildActivityIds = normalizeNumericList(childActivityIds);
 
-  const connection = await pool.getConnection();
+  const connection = /** @type {import('mysql2/promise').PoolConnection} */ (await pool.getConnection());
   try {
     await connection.beginTransaction();
 
@@ -812,6 +866,7 @@ export async function createArticle({
     }
 
     const [insertResult] = await connection.execute(
+      /* language=MySQL */
       `INSERT INTO activities (
         user_id,
         school_id,
@@ -830,7 +885,7 @@ export async function createArticle({
         is_public,
         status,
         published_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), NOW(), NOW(), ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?, ?)`,
       [
         String(userId),
         schoolRow.id,
@@ -842,6 +897,7 @@ export async function createArticle({
         String(title || '').trim(),
         String(content || '').trim(),
         yearMonth,
+        postingDateString,
         normalizedParentActivityId,
         normalizedStatus === 'published' ? 1 : 0,
         normalizedStatus,
@@ -853,6 +909,7 @@ export async function createArticle({
 
     for (const imageUrl of uniqueImageUrls) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_images (school_id, activity_id, url, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolRow.id, activityId, imageUrl]
@@ -861,6 +918,7 @@ export async function createArticle({
 
     for (const categoryId of normalizeNumericList(categoryIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_categories (school_id, activity_id, category_id, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolRow.id, activityId, categoryId]
@@ -869,6 +927,7 @@ export async function createArticle({
 
     for (const companyId of normalizeNumericList(companyIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_companies (school_id, activity_id, company_id, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolRow.id, activityId, companyId]
@@ -877,6 +936,7 @@ export async function createArticle({
 
     for (const sdgId of normalizeNumericList(sdgIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_sdgs (activity_id, sdg_id, created_at)
          VALUES (?, ?, NOW())`,
         [activityId, sdgId]
@@ -885,6 +945,7 @@ export async function createArticle({
 
     if (normalizedChildActivityIds.length) {
       await connection.query(
+        /* language=MySQL */
         `UPDATE activities
          SET parent_id = ?, updated_at = NOW()
          WHERE school_id = ?
@@ -939,12 +1000,13 @@ export async function updateArticle({
   const uniqueImageUrls = [...new Set([...libraryImageUrls, ...uploadedImageUrls].filter(Boolean))];
   let normalizedParentActivityId = normalizeOptionalNumericValue(parentActivityId);
   const normalizedChildActivityIds = normalizeNumericList(childActivityIds).filter((value) => value !== articleId);
-  const connection = await pool.getConnection();
+  const connection = /** @type {import('mysql2/promise').PoolConnection} */ (await pool.getConnection());
 
   try {
     await connection.beginTransaction();
 
     const [rows] = await connection.execute(
+      /* language=MySQL */
       `SELECT a.id, s.id AS school_db_id
        FROM activities a
        INNER JOIN schools s ON s.id = a.school_id
@@ -953,6 +1015,7 @@ export async function updateArticle({
       [articleId, schoolId]
     );
 
+    // noinspection ExceptionCaughtLocallyJS
     if (!rows.length) {
       throw new Error('記事が見つかりません。');
     }
@@ -968,9 +1031,9 @@ export async function updateArticle({
     }
 
     const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     await connection.execute(
+      /* language=MySQL */
       `UPDATE activities
        SET user_id = ?,
            author_user_id = ?,
@@ -980,8 +1043,6 @@ export async function updateArticle({
            grade = ?,
            name = ?,
            contents = ?,
-           activited_at = ?,
-           activity_date = CURDATE(),
            parent_id = ?,
            is_public = ?,
            status = ?,
@@ -997,7 +1058,6 @@ export async function updateArticle({
         grade || null,
         String(title || '').trim(),
         String(content || '').trim(),
-        yearMonth,
         normalizedParentActivityId,
         normalizedStatus === 'published' ? 1 : 0,
         normalizedStatus,
@@ -1006,13 +1066,14 @@ export async function updateArticle({
       ]
     );
 
-    await connection.execute('DELETE FROM activity_images WHERE activity_id = ?', [articleId]);
-    await connection.execute('DELETE FROM activity_categories WHERE activity_id = ?', [articleId]);
-    await connection.execute('DELETE FROM activity_companies WHERE activity_id = ?', [articleId]);
-    await connection.execute('DELETE FROM activity_sdgs WHERE activity_id = ?', [articleId]);
+    await connection.execute(/* language=MySQL */ 'DELETE FROM activity_images WHERE activity_id = ?', [articleId]);
+    await connection.execute(/* language=MySQL */ 'DELETE FROM activity_categories WHERE activity_id = ?', [articleId]);
+    await connection.execute(/* language=MySQL */ 'DELETE FROM activity_companies WHERE activity_id = ?', [articleId]);
+    await connection.execute(/* language=MySQL */ 'DELETE FROM activity_sdgs WHERE activity_id = ?', [articleId]);
 
     for (const imageUrl of uniqueImageUrls) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_images (school_id, activity_id, url, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolDbId, articleId, imageUrl]
@@ -1021,6 +1082,7 @@ export async function updateArticle({
 
     for (const categoryId of normalizeNumericList(categoryIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_categories (school_id, activity_id, category_id, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolDbId, articleId, categoryId]
@@ -1029,6 +1091,7 @@ export async function updateArticle({
 
     for (const companyId of normalizeNumericList(companyIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_companies (school_id, activity_id, company_id, created_at)
          VALUES (?, ?, ?, NOW())`,
         [schoolDbId, articleId, companyId]
@@ -1037,6 +1100,7 @@ export async function updateArticle({
 
     for (const sdgId of normalizeNumericList(sdgIds)) {
       await connection.execute(
+        /* language=MySQL */
         `INSERT INTO activity_sdgs (activity_id, sdg_id, created_at)
          VALUES (?, ?, NOW())`,
         [articleId, sdgId]
@@ -1044,6 +1108,7 @@ export async function updateArticle({
     }
 
     await connection.execute(
+      /* language=MySQL */
       `UPDATE activities
        SET parent_id = NULL, updated_at = NOW()
        WHERE school_id = ?
@@ -1054,6 +1119,7 @@ export async function updateArticle({
 
     if (normalizedChildActivityIds.length) {
       await connection.query(
+        /* language=MySQL */
         `UPDATE activities
          SET parent_id = ?, updated_at = NOW()
          WHERE school_id = ?
@@ -1076,6 +1142,7 @@ export async function updateArticle({
 
 export async function removeArticle({ schoolId, articleId }) {
   const [result] = await pool.execute(
+    /* language=MySQL */
     `UPDATE activities a
      INNER JOIN schools s ON s.id = a.school_id
      SET a.deleted_at = NOW(),

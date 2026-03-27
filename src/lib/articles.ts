@@ -20,6 +20,7 @@ export interface ArticleData {
   companyNames?: string[];
   companyIds?: number[];
   date: string;
+  fiscalYear?: string;
   imageUrl?: string;
   imageUrls?: string[];
   sdgItems?: Array<{
@@ -66,6 +67,7 @@ export const fallbackArticles: ArticleData[] = [
     tags: ['みなとみらい', '環境保護'],
     company: '企業A',
     date: '2024/01/15',
+    fiscalYear: '2023年度',
     location: { lat: 35.4593, lng: 139.6317, name: '横浜ランドマークタワー' },
   },
   {
@@ -78,6 +80,7 @@ export const fallbackArticles: ArticleData[] = [
     tags: ['SDGs', '地域貢献'],
     company: '企業B',
     date: '2024/01/18',
+    fiscalYear: '2023年度',
     location: { lat: 35.4537, lng: 139.638, name: 'パシフィコ横浜' },
   },
 ];

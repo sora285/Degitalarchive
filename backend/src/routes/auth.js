@@ -44,7 +44,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   }
 });
 
-router.post('/register', loginLimiter, async (req, res, next) => {
+router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password, schoolId } = req.body ?? {};
 

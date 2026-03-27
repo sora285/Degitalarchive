@@ -107,7 +107,7 @@ export default function Login() {
   };
 
   const handleBackToSchoolSelect = () => {
-    navigate('/');
+    navigate(`/schools/${schoolId}/home`);
   };
 
   return (
@@ -122,7 +122,7 @@ export default function Login() {
           >
             <ArrowLeft size={18} />
             <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px]">
-              学校選択に戻る
+              公開記事一覧に戻る
             </span>
           </button>
 

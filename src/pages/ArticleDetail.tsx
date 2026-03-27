@@ -45,12 +45,18 @@ function getSdgColor(sdgText: string) {
 function Header() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
       <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors whitespace-nowrap" onClick={() => navigate(`/schools/${schoolId}/home`)}>デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
+        {currentUser && (
+          <p className="text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.62)] whitespace-nowrap">
+            {currentUser.name}さんこんにちは
+          </p>
+        )}
         <p
           onClick={() => navigate(`/schools/${schoolId}/map`)}
           className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold cursor-pointer hover:text-[rgba(0,0,0,0.9)] transition-colors text-[16px] text-[rgba(0,0,0,0.7)]"
@@ -63,16 +69,20 @@ function Header() {
         >
           一覧から探す
         </p>
-        <button
-          onClick={() => {
-            clearSession();
-            navigate('/');
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
-          <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
-        </button>
+        {currentUser && (
+          <>
+            <button
+              onClick={() => {
+                clearSession();
+                navigate('/');
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
+              <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -81,15 +91,15 @@ function Header() {
 function RelatedArticleCard({
   article,
   schoolId,
-  isAdmin,
+  canViewStatus,
   onClick,
 }: {
   article: ArticleData;
   schoolId?: string;
-  isAdmin: boolean;
+  canViewStatus: boolean;
   onClick: () => void;
 }) {
-  const statusLabel = article.status === "draft" ? "非公開" : "公開";
+  const statusLabel = article.status === "draft" ? "未承認" : "承認済み";
   const statusClasses =
     article.status === "draft"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
@@ -137,7 +147,7 @@ function RelatedArticleCard({
             <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${activityRelationClasses}`}>
               {activityRelationLabel}
             </span>
-            {isAdmin && (
+            {canViewStatus && (
               <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${statusClasses}`}>
                 {statusLabel}
               </span>
@@ -181,7 +191,15 @@ export default function ArticleDetail() {
   const [error, setError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
-  const statusLabel = article?.status === "draft" ? "非公開" : "公開";
+  const canEditArticle =
+    Boolean(article) &&
+    (
+      isAdmin ||
+      (currentUser?.role === "user" &&
+        article?.status === "draft" &&
+        article?.authorUserId === currentUser?.id)
+    );
+  const statusLabel = article?.status === "draft" ? "未承認" : "承認済み";
   const statusClasses =
     article?.status === "draft"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
@@ -249,73 +267,79 @@ export default function ArticleDetail() {
           {backLabel}
         </button>
 
-        {isAdmin && article && !isLoading && !error && (
+        {article && !isLoading && !error && (canEditArticle || isAdmin) && (
           <div className="mb-6 flex items-center gap-3">
-            <button
-              onClick={() => navigate(`/schools/${schoolId}/post?articleId=${article.id}`)}
-              className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md"
-            >
-              編集する
-            </button>
-            <button
-              disabled={isTogglingStatus}
-              onClick={async () => {
-                if (!schoolId || !article || !currentUser) return;
+            {canEditArticle && (
+              <button
+                onClick={() => navigate(`/schools/${schoolId}/post?articleId=${article.id}`)}
+                className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md"
+              >
+                編集する
+              </button>
+            )}
+            {isAdmin && (
+              <>
+                <button
+                  disabled={isTogglingStatus}
+                  onClick={async () => {
+                    if (!schoolId || !article || !currentUser) return;
 
-                const nextStatus = article.status === "draft" ? "published" : "draft";
-                setIsTogglingStatus(true);
-                try {
-                  const updated = await updateArticle(article.id, {
-                    schoolId,
-                    userId: currentUser.id,
-                    status: nextStatus,
-                    title: article.title,
-                    content: article.content,
-                    grade: article.grade || "",
-                    locationName: article.location?.name || "",
-                    latitude: article.location?.lat ? String(article.location.lat) : "",
-                    longitude: article.location?.lng ? String(article.location.lng) : "",
-                    sdgIds: (article.sdgIds || []).map((value) => String(value)),
-                    categoryIds: (article.categoryIds || []).map((value) => String(value)),
-                    companyIds: (article.companyIds || []).map((value) => String(value)),
-                    libraryImageUrls: article.imageUrls || [],
-                    uploadedImages: [],
-                    parentActivityId: article.parentActivityId ?? null,
-                    childActivityIds: article.childActivityIds || [],
-                  });
-                  setArticle(updated);
-                } catch (toggleError) {
-                  alert(toggleError instanceof Error ? toggleError.message : "公開状態の更新に失敗しました。");
-                } finally {
-                  setIsTogglingStatus(false);
-                }
-              }}
-              className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
-            >
-              {isTogglingStatus ? "切替中..." : article.status === "draft" ? "公開にする" : "非公開にする"}
-            </button>
-            <button
-              disabled={isDeleting}
-              onClick={async () => {
-                if (!schoolId || !article) return;
-                if (!window.confirm(`「${article.title}」を削除しますか？`)) {
-                  return;
-                }
+                    const nextStatus = article.status === "draft" ? "published" : "draft";
+                    setIsTogglingStatus(true);
+                    try {
+                      const updated = await updateArticle(article.id, {
+                        schoolId,
+                        userId: currentUser.id,
+                        status: nextStatus,
+                        title: article.title,
+                        content: article.content,
+                        grade: article.grade || "",
+                        locationName: article.location?.name || "",
+                        latitude: article.location?.lat ? String(article.location.lat) : "",
+                        longitude: article.location?.lng ? String(article.location.lng) : "",
+                        sdgIds: (article.sdgIds || []).map((value) => String(value)),
+                        categoryIds: (article.categoryIds || []).map((value) => String(value)),
+                        companyIds: (article.companyIds || []).map((value) => String(value)),
+                        libraryImageUrls: article.imageUrls || [],
+                        uploadedImages: [],
+                        parentActivityId: article.parentActivityId ?? null,
+                        childActivityIds: article.childActivityIds || [],
+                      });
+                      setArticle(updated);
+                    } catch (toggleError) {
+                      alert(toggleError instanceof Error ? toggleError.message : "公開状態の更新に失敗しました。");
+                    } finally {
+                      setIsTogglingStatus(false);
+                    }
+                  }}
+                  className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
+                >
+                  {isTogglingStatus ? "切替中..." : article.status === "draft" ? "公開にする" : "非公開にする"}
+                </button>
+                <button
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    if (!schoolId || !article) return;
+                    if (!window.confirm(`「${article.title}」を削除しますか？`)) {
+                      return;
+                    }
 
-                setIsDeleting(true);
-                try {
-                  await deleteArticle(schoolId, article.id);
-                  navigate(`/schools/${schoolId}/home`);
-                } catch (deleteError) {
-                  alert(deleteError instanceof Error ? deleteError.message : "記事の削除に失敗しました。");
-                } finally {
-                  setIsDeleting(false);
-                }
-              }}
-              className="rounded-xl border border-[rgba(185,28,28,0.28)] bg-[rgba(220,38,38,0.08)] px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(185,28,28,0.9)] shadow-sm transition-all duration-200 hover:bg-[rgba(220,38,38,0.12)] disabled:opacity-60"
-            >
-              {isDeleting ? "削除中..." : "削除する"}
-            </button>
+                    setIsDeleting(true);
+                    try {
+                      await deleteArticle(schoolId, article.id);
+                      navigate(`/schools/${schoolId}/home`);
+                    } catch (deleteError) {
+                      alert(deleteError instanceof Error ? deleteError.message : "記事の削除に失敗しました。");
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                  className="rounded-xl border border-[rgba(185,28,28,0.28)] bg-[rgba(220,38,38,0.08)] px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(185,28,28,0.9)] shadow-sm transition-all duration-200 hover:bg-[rgba(220,38,38,0.12)] disabled:opacity-60"
+                >
+                  {isDeleting ? "削除中..." : "削除する"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -349,7 +373,7 @@ export default function ArticleDetail() {
                   />
                 </div>
                 <div className="p-6 space-y-2">
-                  {isAdmin && (
+                  {Boolean(currentUser) && (
                     <div className="mb-2">
                       <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${statusClasses}`}>
                         {statusLabel}
@@ -402,6 +426,7 @@ export default function ArticleDetail() {
                     })}
                   </div>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">カテゴリ: {article.category || "未設定"}</p>
+                  <p className="text-[16px] text-[rgba(0,0,0,0.7)]">年度: {article.fiscalYear || "未設定"}</p>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">学年・クラス: {article.grade || "未設定"}</p>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">日付: {article.date || "未設定"}</p>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">関連企業様：{article.company || "未設定"}</p>
@@ -440,7 +465,7 @@ export default function ArticleDetail() {
                       key={childArticle.id}
                       article={childArticle}
                       schoolId={schoolId}
-                      isAdmin={Boolean(isAdmin)}
+                      canViewStatus={Boolean(currentUser)}
                       onClick={() =>
                         navigate(
                           `/schools/${schoolId}/article/${childArticle.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
@@ -467,7 +492,7 @@ export default function ArticleDetail() {
                   <RelatedArticleCard
                     article={article.parentArticle}
                     schoolId={schoolId}
-                    isAdmin={Boolean(isAdmin)}
+                    canViewStatus={Boolean(currentUser)}
                     onClick={() =>
                       navigate(
                         `/schools/${schoolId}/article/${article.parentArticle?.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
