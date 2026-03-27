@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS articles (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  school_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  content TEXT NULL,
+  sdgs LONGTEXT NULL,
+  category VARCHAR(100) NULL,
+  grade VARCHAR(50) NULL,
+  tags LONGTEXT NULL,
+  company VARCHAR(255) NULL,
+  article_date DATE NOT NULL,
+  location_name VARCHAR(255) NULL,
+  latitude DECIMAL(10,7) NULL,
+  longitude DECIMAL(10,7) NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_articles_school_date (school_id, article_date),
+  CONSTRAINT fk_articles_school_id
+    FOREIGN KEY (school_id) REFERENCES schools(id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

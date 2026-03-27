@@ -1,0 +1,222 @@
+import { Router } from 'express';
+import {
+  createArticle,
+  getArticleById,
+  getArticleImageById,
+  listArticlesBySchoolId,
+  removeArticle,
+  updateArticle,
+} from '../services/articleService.js';
+import { requireAdmin, requireAuthenticated } from '../middleware/auth.js';
+
+const router = Router();
+
+function isStaffOfSchool(req, schoolId) {
+  return Boolean(
+    req.auth &&
+      req.auth.schoolId === schoolId &&
+      (req.auth.role === 'admin' || req.auth.role === 'user')
+  );
+}
+
+router.get('/', async (req, res, next) => {
+  try {
+    const schoolId = String(req.query.schoolId || '');
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    const includeDrafts = isStaffOfSchool(req, schoolId);
+    const articles = await listArticlesBySchoolId(schoolId, { includeDrafts });
+    return res.status(200).json({ articles });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id', async (req, res, next) => {
+  try {
+    const schoolId = String(req.query.schoolId || '');
+    const articleId = Number(req.params.id);
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    if (!Number.isFinite(articleId) || articleId <= 0) {
+      return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    const includeDraftRelations = isStaffOfSchool(req, schoolId);
+    const article = await getArticleById({ schoolId, articleId, includeDraftRelations });
+    if (!article) {
+      return res.status(404).json({ message: '記事が見つかりません。' });
+    }
+
+    const canReadDraft = article.status !== 'draft' || isStaffOfSchool(req, schoolId);
+
+    if (!canReadDraft) {
+      return res.status(404).json({ message: '記事が見つかりません。' });
+    }
+
+    return res.status(200).json({ article });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id/image', async (req, res, next) => {
+  try {
+    const schoolId = String(req.query.schoolId || '');
+    const articleId = Number(req.params.id);
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    if (!Number.isFinite(articleId) || articleId <= 0) {
+      return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    const article = await getArticleById({ schoolId, articleId });
+    if (!article) {
+      return res.status(404).json({ message: '記事が見つかりません。' });
+    }
+
+    const canReadDraft = article.status !== 'draft' || isStaffOfSchool(req, schoolId);
+
+    if (!canReadDraft) {
+      return res.status(404).json({ message: '記事画像が見つかりません。' });
+    }
+
+    const imageUrl = await getArticleImageById({ schoolId, articleId });
+    if (!imageUrl) {
+      return res.status(404).json({ message: '記事画像が見つかりません。' });
+    }
+
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    return res.redirect(302, imageUrl);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/', requireAuthenticated, async (req, res, next) => {
+  try {
+    const schoolId = String(req.body?.schoolId || '');
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    const requestedUserId = Number(req.body?.userId || 0);
+    const actingUserId = req.auth?.userId || requestedUserId;
+    const isAdmin = req.auth?.role === 'admin';
+
+    const article = await createArticle({
+      schoolId,
+      userId: actingUserId,
+      status: isAdmin ? String(req.body?.status || 'published') : 'draft',
+      title: String(req.body?.title || ''),
+      content: String(req.body?.content || ''),
+      grade: String(req.body?.grade || ''),
+      locationName: String(req.body?.locationName || ''),
+      latitude: req.body?.latitude,
+      longitude: req.body?.longitude,
+      sdgIds: Array.isArray(req.body?.sdgIds) ? req.body.sdgIds : [],
+      categoryIds: Array.isArray(req.body?.categoryIds) ? req.body.categoryIds : [],
+      companyIds: Array.isArray(req.body?.companyIds) ? req.body.companyIds : [],
+      libraryImageUrls: Array.isArray(req.body?.libraryImageUrls) ? req.body.libraryImageUrls : [],
+      uploadedImages: Array.isArray(req.body?.uploadedImages) ? req.body.uploadedImages : [],
+      parentActivityId: req.body?.parentActivityId,
+      childActivityIds: Array.isArray(req.body?.childActivityIds) ? req.body.childActivityIds : [],
+    });
+
+    return res.status(201).json({ article });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/:id', requireAuthenticated, async (req, res, next) => {
+  try {
+    const schoolId = String(req.body?.schoolId || '');
+    const articleId = Number(req.params.id);
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    if (!Number.isFinite(articleId) || articleId <= 0) {
+      return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    const existingArticle = await getArticleById({
+      schoolId,
+      articleId,
+      includeDraftRelations: true,
+    });
+    if (!existingArticle) {
+      return res.status(404).json({ message: '記事が見つかりません。' });
+    }
+
+    const isAdmin = req.auth?.role === 'admin';
+    const isOwner = existingArticle.authorUserId === req.auth?.userId;
+
+    if (!isAdmin) {
+      if (!isOwner) {
+        return res.status(403).json({ message: '自分が作成した記事のみ編集できます。' });
+      }
+
+      if (existingArticle.status !== 'draft') {
+        return res.status(403).json({ message: '一般教員は非公開の記事のみ編集できます。' });
+      }
+    }
+
+    const article = await updateArticle({
+      articleId,
+      schoolId,
+      userId: Number(req.auth?.userId || req.body?.userId || 0),
+      status: isAdmin ? String(req.body?.status || existingArticle.status || 'published') : 'draft',
+      title: String(req.body?.title || ''),
+      content: String(req.body?.content || ''),
+      grade: String(req.body?.grade || ''),
+      locationName: String(req.body?.locationName || ''),
+      latitude: req.body?.latitude,
+      longitude: req.body?.longitude,
+      sdgIds: Array.isArray(req.body?.sdgIds) ? req.body.sdgIds : [],
+      categoryIds: Array.isArray(req.body?.categoryIds) ? req.body.categoryIds : [],
+      companyIds: Array.isArray(req.body?.companyIds) ? req.body.companyIds : [],
+      libraryImageUrls: Array.isArray(req.body?.libraryImageUrls) ? req.body.libraryImageUrls : [],
+      uploadedImages: Array.isArray(req.body?.uploadedImages) ? req.body.uploadedImages : [],
+      parentActivityId: req.body?.parentActivityId,
+      childActivityIds: Array.isArray(req.body?.childActivityIds) ? req.body.childActivityIds : [],
+    });
+
+    return res.status(200).json({ article });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const schoolId = String(req.query.schoolId || '');
+    const articleId = Number(req.params.id);
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId は必須です。' });
+    }
+
+    if (!Number.isFinite(articleId) || articleId <= 0) {
+      return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    await removeArticle({ schoolId, articleId });
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+export default router;

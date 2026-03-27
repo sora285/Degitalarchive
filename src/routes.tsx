@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Home from "./pages/Home";
 import ArticleDetail from "./pages/ArticleDetail";
 import PostArticle from "./pages/PostArticle";
@@ -14,6 +15,10 @@ export const router = createBrowserRouter([
   {
     path: "/schools/:schoolId",
     Component: Login,
+  },
+  {
+    path: "/schools/:schoolId/register",
+    Component: Register,
   },
   {
     path: "/schools/:schoolId/home",

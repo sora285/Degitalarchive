@@ -1,17 +1,93 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, MapPin } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { articlesData, ArticleData } from "./Home";
+import { clearSession, getCurrentUser } from "../lib/session";
+import { ArticleData, fetchArticles } from "../lib/articles";
+import fixedArticleImage from "../assets/article_fixed.svg";
+
+const FIXED_ARTICLE_IMAGE = fixedArticleImage;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+function buildDisplayMarkers(articles: ArticleData[]) {
+  const articleGroups = new globalThis.Map<string, ArticleData[]>();
+
+  articles.forEach((article) => {
+    const key = `${article.location.lat.toFixed(4)}:${article.location.lng.toFixed(4)}`;
+    const group = articleGroups.get(key) || [];
+    group.push(article);
+    articleGroups.set(key, group);
+  });
+
+  return articles.map((article) => {
+    const key = `${article.location.lat.toFixed(4)}:${article.location.lng.toFixed(4)}`;
+    const group = articleGroups.get(key) || [article];
+    const index = group.findIndex((item) => item.id === article.id);
+
+    if (group.length <= 1 || index < 0) {
+      return {
+        article,
+        displayLat: article.location.lat,
+        displayLng: article.location.lng,
+        groupSize: group.length,
+      };
+    }
+
+    const radiusMeters = Math.min(10 + group.length * 4, 42);
+    const angle = (Math.PI * 2 * index) / group.length;
+    const latOffset = (radiusMeters * Math.sin(angle)) / 111320;
+    const lngOffset =
+      (radiusMeters * Math.cos(angle)) /
+      (111320 * Math.cos((article.location.lat * Math.PI) / 180));
+
+    return {
+      article,
+      displayLat: article.location.lat + latOffset,
+      displayLng: article.location.lng + lngOffset,
+      groupSize: group.length,
+    };
+  });
+}
+
+function buildMarkerTitle(title: string) {
+  return title.length > 8 ? `${title.slice(0, 8)}…` : title;
+}
+
+function buildMarkerIcon(title: string, showLabel: boolean) {
+  const label = buildMarkerTitle(title);
+  const width = showLabel ? 124 : 28;
+  const height = showLabel ? 52 : 28;
+  const pinX = width / 2;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      ${showLabel ? `<rect x="6" y="4" width="${width - 12}" height="22" rx="11" fill="rgba(255,255,255,0.98)" stroke="rgba(0,0,0,0.08)" />` : ""}
+      ${showLabel ? `<text x="${width / 2}" y="19" text-anchor="middle" font-size="10.5" font-weight="700" fill="rgba(31,41,55,0.92)" font-family="Inter, 'Noto Sans JP', sans-serif">${label}</text>` : ""}
+      <line x1="${pinX}" y1="${showLabel ? 26 : 6}" x2="${pinX}" y2="${showLabel ? 38 : 15}" stroke="rgba(255,100,100,0.58)" stroke-width="2"/>
+      <circle cx="${pinX}" cy="${showLabel ? 42 : 18}" r="${showLabel ? 8 : 8}" fill="rgba(255,100,100,0.96)" stroke="white" stroke-width="3"/>
+    </svg>
+  `;
+
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(width, height),
+    anchor: new google.maps.Point(pinX, showLabel ? 42 : 18),
+  };
+}
 
 function Header() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
       <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] h-[67px] flex items-center px-8 justify-between" />
-      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">みなとみらいデジタルアーカイブ</p>
+      <p className="absolute font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold leading-[normal] left-[93px] not-italic text-[20px] text-[rgba(0,0,0,0.7)] top-[23px] whitespace-nowrap">デジタルアーカイブ</p>
       <div className="absolute right-8 top-[23px] flex gap-8 items-center">
+        {currentUser && (
+          <p className="text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.62)] whitespace-nowrap">
+            {currentUser.name}さんこんにちは
+          </p>
+        )}
         <div className="relative">
           <p 
             onClick={() => navigate(`/schools/${schoolId}/map`)}
@@ -29,31 +105,51 @@ function Header() {
             一覧から探す
           </p>
         </div>
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
-          <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
-        </button>
+        {currentUser && (
+          <button
+            onClick={() => {
+              clearSession();
+              navigate('/');
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
+          >
+            <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
+            <span className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.7)]">ログアウト</span>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function MapView() {
+function MapView({ articles }: { articles: ArticleData[] }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const [selectedArticle, setSelectedArticle] = useState<ArticleData | null>(null);
+  const currentUser = getCurrentUser();
+  const canViewStatus = Boolean(currentUser);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.Marker[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
 
   // みなとみらいエリアの中心座標
   const centerLat = 35.4560;
   const centerLng = 139.6345;
+  const displayMarkers = buildDisplayMarkers(articles);
+
+  const getArticleImageSrc = (article: ArticleData) => {
+    if (schoolId) {
+      return `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`;
+    }
+
+    return article.imageUrl || FIXED_ARTICLE_IMAGE;
+  };
+
+  const getStatusLabel = (article: ArticleData) => (article.status === "draft" ? "未承認" : "承認済み");
+  const getActivityRelationLabel = (article: ArticleData) =>
+    article.isChildActivity ? "子活動" : article.isParentActivity ? "親活動" : "単独活動";
 
   // 簡易地図のフォールバック表示用
   const latLngToPixel = (lat: number, lng: number) => {
@@ -72,9 +168,24 @@ function MapView() {
   };
 
   useEffect(() => {
+    const clearInfoWindowCloseTimer = () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+
+    const scheduleInfoWindowClose = () => {
+      clearInfoWindowCloseTimer();
+      closeTimerRef.current = window.setTimeout(() => {
+        infoWindowRef.current?.close();
+        closeTimerRef.current = null;
+      }, 180);
+    };
+
     // Google Maps APIのスクリプトを読み込む
     const loadGoogleMapsScript = () => {
-      if (window.google && window.google.maps) {
+      if (window.google && window.google.maps && typeof window.google.maps.Map === "function") {
         initMap();
         return;
       }
@@ -97,11 +208,24 @@ function MapView() {
         return;
       }
 
+      window.gm_authFailure = () => {
+        setMapError('Google Maps APIキーの認証に失敗しました。フォールバック表示を使用します。');
+      };
+
+      const existingScript = document.querySelector<HTMLScriptElement>('script[data-google-maps-loader="true"]');
+      if (existingScript) {
+        return;
+      }
+
+      window.__initGoogleMap = () => {
+        initMap();
+      };
+
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&language=ja&loading=async`;
+      script.dataset.googleMapsLoader = 'true';
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&language=ja&v=weekly&callback=__initGoogleMap`;
       script.async = true;
       script.defer = true;
-      script.onload = () => initMap();
       script.onerror = () => {
         setMapError('Google Maps APIの読み込みに失敗しました。フォールバック表示を使用します。');
       };
@@ -109,7 +233,10 @@ function MapView() {
     };
 
     const initMap = () => {
-      if (!mapRef.current || !window.google) return;
+      if (!mapRef.current || !window.google || !window.google.maps || typeof window.google.maps.Map !== "function") {
+        setMapError('Google Mapsの初期化に必要なライブラリが読み込まれていません。フォールバック表示を使用します。');
+        return;
+      }
 
       try {
         // カスタムマップスタイル（黄色系テーマ）
@@ -144,64 +271,76 @@ function MapView() {
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: true,
-          mapId: 'DEMO_MAP_ID', // Advanced Markers用
+          clickableIcons: false,
         });
 
         googleMapRef.current = map;
-
-        // InfoWindowを作成
         const infoWindow = new google.maps.InfoWindow();
         infoWindowRef.current = infoWindow;
 
-        // 記事マーカーを配置（AdvancedMarkerElement使用）
-        articlesData.forEach((article) => {
-          // カスタムピン要素を作成
-          const pinElement = new google.maps.marker.PinElement({
-            background: '#ff6464',
-            borderColor: '#ff3333',
-            glyphColor: '#ffffff',
-            scale: 1.2,
-          });
-
-          const marker = new google.maps.marker.AdvancedMarkerElement({
-            position: { lat: article.location.lat, lng: article.location.lng },
-            map: map,
+        displayMarkers.forEach(({ article, displayLat, displayLng, groupSize }) => {
+          const marker = new google.maps.Marker({
+            position: { lat: displayLat, lng: displayLng },
+            map,
             title: article.title,
-            content: pinElement.element,
+            icon: buildMarkerIcon(article.title, groupSize <= 1),
           });
 
-          // マーカークリックイベント
-          marker.addListener('click', () => {
-            setSelectedArticle(article);
-            
-            // InfoWindow の内容
-            const content = `
-              <div style="padding: 8px; max-width: 250px;">
-                <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 8px 0; color: rgba(0,0,0,0.85);">
+          const popupHtml = `
+            <a href="/schools/${schoolId}/article/${article.id}?from=map" style="display:block;width:280px;text-decoration:none;font-family:Inter,'Noto Sans JP',sans-serif;" data-article-popup="true">
+              <div style="padding:4px 2px 2px;">
+                <div style="width:100%;height:96px;border-radius:14px;overflow:hidden;background:rgba(0,0,0,0.05);margin-bottom:10px;">
+                  <img src="${getArticleImageSrc(article)}" alt="${article.title}" style="width:100%;height:100%;object-fit:cover;display:block;" />
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                  <span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">
+                    ${getActivityRelationLabel(article)}
+                  </span>
+                  ${canViewStatus ? `<span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">${getStatusLabel(article)}</span>` : ""}
+                </div>
+                <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;line-height:1.4;color:rgba(0,0,0,0.84);">
                   ${article.title}
                 </h3>
-                <p style="font-size: 13px; margin: 0 0 8px 0; color: rgba(0,0,0,0.6);">
-                  📍 ${article.location.name}
+                <p style="margin:0 0 8px;font-size:13px;color:rgba(0,0,0,0.56);">
+                  ${article.location?.name || "場所未設定"}
                 </p>
-                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
-                  ${article.tags.slice(0, 3).map(tag => 
-                    `<span style="font-size: 11px; padding: 2px 8px; background: rgba(255,209,131,0.3); border-radius: 12px; color: rgba(0,0,0,0.7);">#${tag}</span>`
-                  ).join('')}
+                <p style="margin:0 0 10px;font-size:13px;line-height:1.7;color:rgba(0,0,0,0.68);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">
+                  ${article.content || "本文は未登録です。"}
+                </p>
+                <div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.72);">
+                  記事詳細を見る
                 </div>
-                <p style="font-size: 12px; margin: 0; color: rgba(0,0,0,0.5);">
-                  ${article.date}
-                </p>
               </div>
-            `;
-            
-            infoWindow.setContent(content);
-            infoWindow.open({ map, anchor: marker });
+            </a>
+          `;
 
-            // 地図の中心を移動
-            map.panTo({ lat: article.location.lat, lng: article.location.lng });
+          marker.addListener("mouseover", () => {
+            clearInfoWindowCloseTimer();
+            infoWindow.setContent(popupHtml);
+            infoWindow.open({ map, anchor: marker });
+          });
+
+          marker.addListener("mouseout", () => {
+            scheduleInfoWindowClose();
+          });
+
+          marker.addListener("click", () => {
+            navigate(`/schools/${schoolId}/article/${article.id}?from=map`, {
+              state: { from: "map" },
+            });
           });
 
           markersRef.current.push(marker);
+        });
+
+        infoWindow.addListener("domready", () => {
+          const popup = document.querySelector<HTMLElement>('[data-article-popup="true"]');
+          if (!popup) {
+            return;
+          }
+
+          popup.addEventListener("mouseenter", clearInfoWindowCloseTimer);
+          popup.addEventListener("mouseleave", scheduleInfoWindowClose);
         });
 
         setMapError(null);
@@ -215,19 +354,20 @@ function MapView() {
 
     // クリーンアップ
     return () => {
-      markersRef.current.forEach(marker => {
-        marker.map = null;
-      });
+      clearInfoWindowCloseTimer();
+      markersRef.current.forEach((marker) => marker.setMap(null));
       markersRef.current = [];
+      infoWindowRef.current?.close();
+      infoWindowRef.current = null;
+      delete window.__initGoogleMap;
     };
-  }, []);
+  }, [articles]);
 
   // フォールバック：APIキーがない場合の簡易地図表示
   if (mapError) {
     return (
-      <div className="flex-1 flex gap-4 p-8">
-        {/* 簡易地図エリア */}
-        <div className="flex-1 bg-white rounded-3xl shadow-xl overflow-hidden relative">
+      <div className="relative flex-1 overflow-hidden px-8 pb-8">
+        <div className="h-full w-full bg-white rounded-3xl shadow-xl overflow-hidden relative">
           <div className="w-full h-full bg-gradient-to-br from-[#e3f2fd] to-[#bbdefb] relative">
             {/* グリッド線 */}
             <svg className="absolute inset-0 w-full h-full opacity-20">
@@ -243,7 +383,7 @@ function MapView() {
             <div className="absolute top-0 right-0 w-[40%] h-full bg-[rgba(100,150,255,0.15)]" />
             
             {/* エリア名と通知 */}
-            <div className="absolute top-8 left-8 space-y-4">
+            <div className="absolute top-8 left-8 space-y-4 z-10">
               <div className="bg-white/90 rounded-lg px-4 py-2 shadow-md">
                 <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.8)]">
                   みなとみらいエリア
@@ -264,8 +404,8 @@ function MapView() {
 
             {/* 記事マーカー（簡易版） */}
             <div className="absolute inset-0">
-              {articlesData.map((article) => {
-                const { x, y } = latLngToPixel(article.location.lat, article.location.lng);
+              {displayMarkers.map(({ article, displayLat, displayLng, groupSize }) => {
+                const { x, y } = latLngToPixel(displayLat, displayLng);
                 return (
                   <div
                     key={article.id}
@@ -275,67 +415,28 @@ function MapView() {
                       top: `${y}px`,
                       transform: 'translate(-50%, -100%)',
                     }}
-                    onClick={() => setSelectedArticle(article)}
+                    onClick={() =>
+                      navigate(`/schools/${schoolId}/article/${article.id}?from=map`, {
+                        state: { from: "map" },
+                      })
+                    }
                     className="cursor-pointer"
                   >
-                    <MapPin 
-                      size={32} 
-                      className="text-[rgba(255,100,100,0.9)] fill-[rgba(255,100,100,0.6)] hover:scale-110 transition-transform drop-shadow-lg" 
-                    />
+                    <div className="flex flex-col items-center gap-1">
+                      {groupSize <= 1 && (
+                        <div className="max-w-[148px] truncate rounded-full border border-[rgba(0,0,0,0.08)] bg-white/96 px-3 py-1 text-[11px] font-semibold text-[rgba(0,0,0,0.78)] shadow-lg">
+                          {buildMarkerTitle(article.title)}
+                        </div>
+                      )}
+                      <MapPin
+                        size={30}
+                        className="text-[rgba(255,100,100,0.9)] fill-[rgba(255,100,100,0.6)] hover:scale-110 transition-transform drop-shadow-lg"
+                      />
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        </div>
-
-        {/* サイドパネル */}
-        <div className="w-[350px] bg-white rounded-3xl shadow-xl p-6 overflow-y-auto">
-          <h2 className="font-['Inter:Bold','Noto_Sans_JP:Bold',sans-serif] font-bold text-[24px] text-[rgba(0,0,0,0.8)] mb-4">
-            記事一覧
-          </h2>
-          <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.6)] mb-6">
-            {articlesData.length}件の記事
-          </p>
-          
-          <div className="space-y-3">
-            {articlesData.map((article) => (
-              <div
-                key={article.id}
-                onClick={() => setSelectedArticle(article)}
-                onDoubleClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  selectedArticle?.id === article.id
-                    ? 'border-[rgba(255,209,131,0.93)] bg-[rgba(255,209,131,0.1)] shadow-md'
-                    : 'border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.5)] hover:shadow-md'
-                }`}
-              >
-                <div className="flex items-start gap-2 mb-2">
-                  <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-1 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2 mb-1">
-                      {article.title}
-                    </h3>
-                    <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.6)] mb-2">
-                      {article.location.name}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {article.tags.slice(0, 2).map((tag, index) => (
-                        <span
-                          key={index}
-                          className="inline-block px-2 py-0.5 bg-gradient-to-r from-[rgba(255,209,131,0.2)] to-[rgba(255,220,150,0.2)] border border-[rgba(255,209,131,0.4)] rounded-full text-[10px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[rgba(0,0,0,0.7)]"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[11px] text-[rgba(0,0,0,0.4)] mt-2 text-center">
-                  ダブルクリックで記事を開く
-                </p>
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -344,66 +445,19 @@ function MapView() {
 
   // Google Maps表示
   return (
-    <div className="flex-1 flex gap-4 p-8">
-      {/* Google Maps エリア */}
-      <div className="flex-1 bg-white rounded-3xl shadow-xl overflow-hidden relative">
+    <div className="relative flex-1 overflow-hidden px-8 pb-8">
+      <div className="h-full w-full bg-white rounded-3xl shadow-xl overflow-hidden relative">
         <div ref={mapRef} className="w-full h-full" />
-      </div>
-
-      {/* サイドパネル */}
-      <div className="w-[350px] bg-white rounded-3xl shadow-xl p-6 overflow-y-auto">
-        <h2 className="font-['Inter:Bold','Noto_Sans_JP:Bold',sans-serif] font-bold text-[24px] text-[rgba(0,0,0,0.8)] mb-4">
-          記事一覧
-        </h2>
-        <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[14px] text-[rgba(0,0,0,0.6)] mb-6">
-          {articlesData.length}件の記事
-        </p>
-        
-        <div className="space-y-3">
-          {articlesData.map((article) => (
-            <div
-              key={article.id}
-              onClick={() => {
-                setSelectedArticle(article);
-                // 地図の中心を移動
-                if (googleMapRef.current) {
-                  googleMapRef.current.panTo({ lat: article.location.lat, lng: article.location.lng });
-                  googleMapRef.current.setZoom(16);
-                }
-              }}
-              onDoubleClick={() => navigate(`/schools/${schoolId}/article/${article.id}`)}
-              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                selectedArticle?.id === article.id
-                  ? 'border-[rgba(255,209,131,0.93)] bg-[rgba(255,209,131,0.1)] shadow-md'
-                  : 'border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.5)] hover:shadow-md'
-              }`}
-            >
-              <div className="flex items-start gap-2 mb-2">
-                <MapPin size={16} className="text-[rgba(255,100,100,0.9)] mt-1 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.85)] line-clamp-2 mb-1">
-                    {article.title}
-                  </h3>
-                  <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.6)] mb-2">
-                    {article.location.name}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {article.tags.slice(0, 2).map((tag, index) => (
-                      <span
-                        key={index}
-                        className="inline-block px-2 py-0.5 bg-gradient-to-r from-[rgba(255,209,131,0.2)] to-[rgba(255,220,150,0.2)] border border-[rgba(255,209,131,0.4)] rounded-full text-[10px] font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[rgba(0,0,0,0.7)]"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[11px] text-[rgba(0,0,0,0.4)] mt-2 text-center">
-                {selectedArticle?.id === article.id ? 'ダブルクリックで記事を開く' : 'クリックで地図に表示'}
-              </p>
-            </div>
-          ))}
+        <div className="absolute left-8 top-8 z-10 rounded-2xl border border-[rgba(0,0,0,0.08)] bg-white/92 px-5 py-4 shadow-xl backdrop-blur-sm">
+          <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.8)]">
+            地図上のピンをクリック
+          </p>
+          <p className="mt-1 text-[13px] text-[rgba(0,0,0,0.55)]">
+            記事タイトル付きのピンから詳細を表示できます
+          </p>
+          <p className="mt-2 text-[12px] text-[rgba(0,0,0,0.45)]">
+            全{articles.length}件
+          </p>
         </div>
       </div>
     </div>
@@ -413,25 +467,68 @@ function MapView() {
 export default function Map() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
+  const currentUser = getCurrentUser();
+  const canPostArticle = Boolean(currentUser);
+  const [articles, setArticles] = useState<ArticleData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!schoolId) {
+      setError("学校IDが見つかりません。");
+      setIsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsLoading(true);
+    setError("");
+
+    fetchArticles(schoolId)
+      .then((list) => {
+        if (!mounted) return;
+        setArticles(list);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : "記事の取得に失敗しました。");
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
 
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] h-screen flex flex-col" data-name="map">
       <Header />
-      <div className="flex-1 pt-[67px] flex flex-col">
-        <div className="px-8 pt-6 pb-4">
-          <div className="flex items-center justify-between">
-            <h1 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[36px] text-[rgba(0,0,0,0.8)]">
-              地図から探す
-            </h1>
+      <div className="relative flex-1 pt-[67px] flex flex-col">
+        {canPostArticle && (
+          <div className="pointer-events-none absolute right-8 top-[91px] z-30">
             <button
               onClick={() => navigate(`/schools/${schoolId}/post`)}
-              className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
+              className="pointer-events-auto bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
             >
               + 記事を投稿
             </button>
           </div>
-        </div>
-        <MapView />
+        )}
+        {isLoading && (
+          <div className="mx-8 mb-3 rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-3 text-[14px] text-[rgba(0,0,0,0.7)]">
+            記事を読み込み中です...
+          </div>
+        )}
+        {error && (
+          <div className="mx-8 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] text-red-600">
+            {error}
+          </div>
+        )}
+        {!isLoading && <MapView articles={articles} />}
       </div>
     </div>
   );
