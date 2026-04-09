@@ -4,6 +4,7 @@ declare namespace google.maps {
     constructor(mapDiv: HTMLElement, opts?: MapOptions);
     panTo(latLng: LatLng | LatLngLiteral): void;
     setZoom(zoom: number): void;
+    addListener(eventName: string, handler: (event: MapMouseEvent) => void): MapsEventListener;
   }
 
   interface MapOptions {
@@ -14,6 +15,11 @@ declare namespace google.maps {
     streetViewControl?: boolean;
     fullscreenControl?: boolean;
     mapId?: string;
+    clickableIcons?: boolean;
+  }
+
+  interface MapsEventListener {
+    remove(): void;
   }
 
   interface MapTypeStyle {
@@ -25,6 +31,7 @@ declare namespace google.maps {
   class Marker {
     constructor(opts?: MarkerOptions);
     setMap(map: Map | null): void;
+    setPosition(position: LatLng | LatLngLiteral): void;
     addListener(eventName: string, handler: () => void): void;
   }
 
@@ -110,6 +117,10 @@ declare namespace google.maps {
     constructor(lat: number, lng: number);
     lat(): number;
     lng(): number;
+  }
+
+  interface MapMouseEvent {
+    latLng: LatLng | null;
   }
 
   interface LatLngLiteral {

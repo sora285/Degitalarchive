@@ -73,8 +73,11 @@ function Header() {
           <>
             <button
               onClick={() => {
+                if (schoolId) {
+                  localStorage.setItem("currentSchoolId", schoolId);
+                }
                 clearSession();
-                navigate('/');
+                navigate(`/schools/${schoolId}/home`);
               }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
             >

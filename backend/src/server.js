@@ -7,6 +7,7 @@ import { checkDbConnection } from './config/db.js';
 import authRouter from './routes/auth.js';
 import schoolsRouter from './routes/schools.js';
 import articlesRouter from './routes/articles.js';
+import classesRouter from './routes/classes.js';
 import companiesRouter from './routes/companies.js';
 import categoriesRouter from './routes/categories.js';
 import imageLibraryRouter from './routes/imageLibrary.js';
@@ -39,6 +40,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/schools', schoolsRouter);
 app.use('/api/articles', articlesRouter);
+app.use('/api/classes', classesRouter);
 app.use('/api/companies', companiesRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/image-library', imageLibraryRouter);

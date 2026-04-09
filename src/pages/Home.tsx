@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { clearSession, getCurrentUser } from "../lib/session";
 import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -83,7 +84,7 @@ function normalizeSdgLabel(sdgText: string) {
   return SDG_NAME_MAP[num] || sdgText;
 }
 
-function Header() {
+function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser();
@@ -117,10 +118,7 @@ function Header() {
         </div>
         {currentUser && (
           <button
-            onClick={() => {
-              clearSession();
-              navigate('/');
-            }}
+            onClick={onLogoutClick}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
           >
             <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -633,6 +631,7 @@ export default function Home() {
   const [isPendingListOpen, setIsPendingListOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
 
   const splitValues = (value?: string) =>
     String(value || "")
@@ -727,7 +726,7 @@ export default function Home() {
   
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="home">
-      <Header />
+      <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} />
       <SideMenu
         filters={filters}
         setFilters={setFilters}
@@ -859,6 +858,21 @@ export default function Home() {
           </div>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={isLogoutDialogOpen}
+        title="ログアウトしますか？"
+        description="ログアウトすると、教員向けの操作メニューは閉じられます。"
+        confirmLabel="ログアウト"
+        onCancel={() => setIsLogoutDialogOpen(false)}
+        onConfirm={() => {
+          setIsLogoutDialogOpen(false);
+          if (schoolId) {
+            localStorage.setItem("currentSchoolId", schoolId);
+          }
+          clearSession();
+          navigate(`/schools/${schoolId}/home`);
+        }}
+      />
     </div>
   );
 }

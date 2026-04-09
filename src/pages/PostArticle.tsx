@@ -1,56 +1,284 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Upload, LogOut, MapPin, Search, Check, Plus, X, ChevronDown, Trash2 } from "lucide-react";
 import { clearSession, getCurrentUser } from "../lib/session";
+import { fetchClasses, type ClassOption } from "../lib/classes";
+import { fetchSchools } from "../lib/schools";
 import { createCategory, fetchCategories, type CategoryOption } from "../lib/categories";
 import { createCompany, deleteCompany, fetchCompanies, type CompanyOption } from "../lib/companies";
 import { fetchImageLibrary, type ImageLibraryItem } from "../lib/imageLibrary";
 import { ArticleData, createArticle, fetchArticleById, fetchArticles, updateArticle as updateArticleRequest } from "../lib/articles";
+import ModalShell from "../components/ui/ModalShell";
 
-// 地図コンポーネント
-function LocationMap({ 
-  latitude, 
-  longitude, 
-  locationName 
-}: { 
-  latitude: string; 
-  longitude: string; 
-  locationName: string;
-}) {
-  if (!latitude || !longitude) {
-    return (
-      <div className="bg-gradient-to-br from-[#f9f9f9] to-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl p-8 text-center">
-        <MapPin size={40} className="mx-auto text-[rgba(0,0,0,0.3)] mb-3" />
-        <p className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.5)]">
-          場所を検索すると地図が表示されます
-        </p>
-      </div>
+const DEFAULT_LOCATION_CENTER = { lat: 35.4560, lng: 139.6345 };
+
+async function reverseGeocodeLocation(lat: number, lng: number) {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
     );
+
+    if (!response.ok) {
+      throw new Error("reverse geocode failed");
+    }
+
+    const data = await response.json();
+    return String(data?.display_name || "").trim();
+  } catch (error) {
+    console.error("逆ジオコーディングに失敗しました:", error);
+    return "";
   }
+}
+
+async function searchLocationByQuery(query: string, limit = 5) {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}`
+  );
+
+  if (!response.ok) {
+    throw new Error("location search failed");
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+function LocationMap({
+  latitude,
+  longitude,
+  locationName,
+  onSelectLocation,
+}: {
+  latitude: string;
+  longitude: string;
+  locationName: string;
+  onSelectLocation: (next: { latitude: string; longitude: string; locationName: string }) => void;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const googleMapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const mapClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const onSelectLocationRef = useRef(onSelectLocation);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
+
+  useEffect(() => {
+    onSelectLocationRef.current = onSelectLocation;
+  }, [onSelectLocation]);
+
+  useEffect(() => {
+    const initMap = () => {
+      if (!mapRef.current || !window.google || !window.google.maps || typeof window.google.maps.Map !== "function") {
+        setMapError("Google Mapsの初期化に必要なライブラリが読み込まれていません。");
+        return;
+      }
+
+      try {
+        const mapStyles: google.maps.MapTypeStyle[] = [
+          {
+            featureType: "water",
+            elementType: "geometry",
+            stylers: [{ color: "#c9e2f6" }]
+          },
+          {
+            featureType: "landscape",
+            elementType: "geometry",
+            stylers: [{ color: "#fffbf0" }]
+          },
+          {
+            featureType: "poi.park",
+            elementType: "geometry",
+            stylers: [{ color: "#e8f5e9" }]
+          },
+          {
+            featureType: "road",
+            elementType: "geometry",
+            stylers: [{ color: "#ffffff" }]
+          }
+        ];
+
+        const initialLat = Number(latitude);
+        const initialLng = Number(longitude);
+        const hasInitialPosition = Number.isFinite(initialLat) && Number.isFinite(initialLng);
+
+        const map = new google.maps.Map(mapRef.current, {
+          center: hasInitialPosition ? { lat: initialLat, lng: initialLng } : DEFAULT_LOCATION_CENTER,
+          zoom: hasInitialPosition ? 16 : 14,
+          styles: mapStyles,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          clickableIcons: false,
+        });
+
+        googleMapRef.current = map;
+
+        if (hasInitialPosition) {
+          markerRef.current = new google.maps.Marker({
+            position: { lat: initialLat, lng: initialLng },
+            map,
+            title: locationName || "選択された場所",
+          });
+        }
+
+        mapClickListenerRef.current = map.addListener("click", async (event) => {
+          const clickedLatLng = event.latLng;
+          if (!clickedLatLng) {
+            return;
+          }
+
+          const nextLat = clickedLatLng.lat();
+          const nextLng = clickedLatLng.lng();
+          const fallbackLocationName = `緯度 ${nextLat.toFixed(6)}, 経度 ${nextLng.toFixed(6)}`;
+
+          setIsResolvingLocation(true);
+          const resolvedLocationName = await reverseGeocodeLocation(nextLat, nextLng);
+          setIsResolvingLocation(false);
+
+          onSelectLocationRef.current({
+            latitude: String(nextLat),
+            longitude: String(nextLng),
+            locationName: resolvedLocationName || fallbackLocationName,
+          });
+        });
+
+        setMapError(null);
+      } catch (error) {
+        console.error("Google Maps初期化エラー:", error);
+        setMapError("Google Mapsの初期化に失敗しました。");
+      }
+    };
+
+    const loadGoogleMapsScript = () => {
+      if (window.google && window.google.maps && typeof window.google.maps.Map === "function") {
+        initMap();
+        return;
+      }
+
+      let apiKey = "YOUR_API_KEY_HERE";
+      try {
+        if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
+          apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        }
+      } catch (error) {
+        console.error("Google Mapsの環境変数取得に失敗しました:", error);
+      }
+
+      if (apiKey === "YOUR_API_KEY_HERE") {
+        setMapError("Google Maps APIキーが設定されていません。");
+        return;
+      }
+
+      window.gm_authFailure = () => {
+        setMapError("Google Maps APIキーの認証に失敗しました。");
+      };
+
+      const existingScript = document.querySelector<HTMLScriptElement>('script[data-google-maps-loader="true"]');
+      if (existingScript) {
+        window.__initGoogleMap = () => {
+          initMap();
+        };
+        return;
+      }
+
+      window.__initGoogleMap = () => {
+        initMap();
+      };
+
+      const script = document.createElement("script");
+      script.dataset.googleMapsLoader = "true";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&language=ja&v=weekly&callback=__initGoogleMap`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = () => {
+        setMapError("Google Maps APIの読み込みに失敗しました。");
+      };
+      document.head.appendChild(script);
+    };
+
+    loadGoogleMapsScript();
+
+    return () => {
+      mapClickListenerRef.current?.remove();
+      mapClickListenerRef.current = null;
+      delete window.__initGoogleMap;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = googleMapRef.current;
+    if (!map) {
+      return;
+    }
+
+    const parsedLat = Number(latitude);
+    const parsedLng = Number(longitude);
+    const hasPosition = Number.isFinite(parsedLat) && Number.isFinite(parsedLng);
+
+    if (!hasPosition) {
+      markerRef.current?.setMap(null);
+      markerRef.current = null;
+      map.panTo(DEFAULT_LOCATION_CENTER);
+      map.setZoom(14);
+      return;
+    }
+
+    const nextPosition = { lat: parsedLat, lng: parsedLng };
+    if (!markerRef.current) {
+      markerRef.current = new google.maps.Marker({
+        position: nextPosition,
+        map,
+        title: locationName || "選択された場所",
+      });
+    } else {
+      markerRef.current.setPosition(nextPosition);
+    }
+
+    map.panTo(nextPosition);
+    map.setZoom(16);
+  }, [latitude, longitude, locationName]);
 
   return (
     <div className="bg-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl p-4 shadow-lg">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <MapPin size={16} className="text-[rgba(255,209,131,1)]" />
-          <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.8)]">
-            {locationName || '選択された場所'}
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPin size={16} className="text-[rgba(255,209,131,1)] flex-shrink-0" />
+          <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.8)] truncate">
+            {locationName || "地図をクリックして場所を選択"}
           </span>
         </div>
+        <span className="text-[12px] text-[rgba(0,0,0,0.5)] whitespace-nowrap">
+          検索または地図クリック
+        </span>
       </div>
-      <div className="rounded-lg overflow-hidden border border-[rgba(0,0,0,0.1)]">
-        <iframe
-          src={`https://maps.google.com/maps?q=${latitude},${longitude}&z=15&output=embed`}
-          width="100%"
-          height="400"
-          style={{ border: 0 }}
-          allowFullScreen
-          loading="lazy"
-          title="Google Map"
-        />
-      </div>
-      <p className="text-[12px] text-[rgba(0,0,0,0.5)] mt-2 text-center">
-        緯度: {parseFloat(latitude).toFixed(6)}, 経度: {parseFloat(longitude).toFixed(6)}
+
+      {mapError ? (
+        <div className="bg-gradient-to-br from-[#f9f9f9] to-white border border-[rgba(0,0,0,0.08)] rounded-xl p-8 text-center">
+          <MapPin size={40} className="mx-auto text-[rgba(0,0,0,0.3)] mb-3" />
+          <p className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.6)]">
+            {mapError}
+          </p>
+        </div>
+      ) : (
+        <div className="relative rounded-lg overflow-hidden border border-[rgba(0,0,0,0.1)]">
+          <div ref={mapRef} className="h-[400px] w-full bg-[linear-gradient(135deg,#eef6ff_0%,#fff8ea_100%)]" />
+          {isResolvingLocation && (
+            <div className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-[12px] font-medium text-[rgba(0,0,0,0.68)] shadow-md">
+              位置情報を取得中...
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-[12px] text-[rgba(0,0,0,0.5)] mt-3 text-center">
+        {latitude && longitude
+          ? `緯度: ${parseFloat(latitude).toFixed(6)}, 経度: ${parseFloat(longitude).toFixed(6)}`
+          : "地図上をクリックするとピンが置かれ、緯度経度を取得できます"}
       </p>
     </div>
   );
@@ -87,8 +315,11 @@ function Header() {
           <>
             <button
               onClick={() => {
+                if (schoolId) {
+                  localStorage.setItem("currentSchoolId", schoolId);
+                }
                 clearSession();
-                navigate('/');
+                navigate(`/schools/${schoolId}/home`);
               }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
             >
@@ -122,6 +353,7 @@ export default function PostArticle() {
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [classInfo, setClassInfo] = useState("");
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
   const [companies, setCompanies] = useState<string[]>([]);
   const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([]);
   const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(null);
@@ -137,6 +369,7 @@ export default function PostArticle() {
   const [locationName, setLocationName] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
+  const [schoolName, setSchoolName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{
     display_name: string;
@@ -180,14 +413,6 @@ export default function PostArticle() {
     { id: "17", label: "17. パートナーシップで目標を達成しよう" },
   ];
 
-  // 学年・クラスの選択肢
-  const classOptions = [
-    { id: "5-1", label: "5年1組" },
-    { id: "5-2", label: "5年2組" },
-    { id: "6-1", label: "6年1組" },
-    { id: "6-2", label: "6年2組" },
-  ];
-
   const primarySubmitStatus: "draft" | "published" = isAdmin ? "published" : "draft";
 
   useEffect(() => {
@@ -204,6 +429,84 @@ export default function PostArticle() {
       })
       .catch((error) => {
         console.error("カテゴリ一覧の取得に失敗しました:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) {
+      return;
+    }
+
+    let mounted = true;
+
+    fetchSchools()
+      .then((schools) => {
+        if (!mounted) return;
+        const currentSchool = schools.find((school) => school.slug === schoolId);
+        setSchoolName(currentSchool?.name || "");
+      })
+      .catch((error) => {
+        console.error("学校一覧の取得に失敗しました:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolName) {
+      return;
+    }
+
+    if (latitude && longitude) {
+      return;
+    }
+
+    let mounted = true;
+
+    searchLocationByQuery(schoolName, 1)
+      .then((results) => {
+        if (!mounted || results.length === 0) {
+          return;
+        }
+
+        const firstResult = results[0];
+        const resolvedName = String(firstResult.display_name || schoolName);
+        setLocationName((prev) => prev || resolvedName);
+        setLatitude((prev) => prev || String(firstResult.lat || ""));
+        setLongitude((prev) => prev || String(firstResult.lon || ""));
+        setSearchQuery((prev) => prev || schoolName);
+      })
+      .catch((error) => {
+        console.error("学校位置の初期取得に失敗しました:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolName, latitude, longitude]);
+
+  useEffect(() => {
+    if (!schoolId) {
+      return;
+    }
+
+    let mounted = true;
+
+    fetchClasses(schoolId)
+      .then((items) => {
+        if (!mounted) return;
+        setClassOptions(items);
+      })
+      .catch((error) => {
+        console.error("クラス一覧の取得に失敗しました:", error);
+        if (!mounted) return;
+        setClassOptions([]);
       });
 
     return () => {
@@ -535,8 +838,7 @@ export default function PostArticle() {
     setIsSearching(true);
     setShowResults(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=5`);
-      const data = await response.json();
+      const data = await searchLocationByQuery(searchQuery, 5);
       setSearchResults(data);
     } catch (error) {
       console.error("検索エラー:", error);
@@ -549,6 +851,7 @@ export default function PostArticle() {
     setLocationName(result.display_name);
     setLatitude(result.lat);
     setLongitude(result.lon);
+    setSearchQuery(result.display_name);
     setShowResults(false);
   };
 
@@ -858,7 +1161,7 @@ export default function PostArticle() {
                   className="flex items-center justify-between bg-gradient-to-br from-white to-[#fffdf7] border-2 border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)] rounded-xl px-5 py-4 transition-all duration-200 hover:shadow-md"
                 >
                   <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)]">
-                    学年・クラス {classInfo && <span className="ml-2 text-[rgba(0,0,0,0.5)]">({classOptions.find(opt => opt.id === classInfo)?.label})</span>}
+                    学年・クラス {classInfo && <span className="ml-2 text-[rgba(0,0,0,0.5)]">({classInfo})</span>}
                   </span>
                   <ChevronDown 
                     size={20} 
@@ -1021,6 +1324,11 @@ export default function PostArticle() {
                   latitude={latitude}
                   longitude={longitude}
                   locationName={locationName}
+                  onSelectLocation={({ latitude: nextLatitude, longitude: nextLongitude, locationName: nextLocationName }) => {
+                    setLatitude(nextLatitude);
+                    setLongitude(nextLongitude);
+                    setLocationName(nextLocationName);
+                  }}
                 />
               </div>
 
@@ -1074,22 +1382,21 @@ export default function PostArticle() {
       </div>
 
       {/* SDGs モーダル */}
-      {isDraftListOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setIsDraftListOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] px-6 py-5 flex items-center justify-between">
-              <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.8)]">
-                下書きから編集
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsDraftListOpen(false)}
-                className="hover:bg-white/30 rounded-full p-2 transition-colors"
-              >
-                <X size={24} className="text-[rgba(0,0,0,0.7)]" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(80vh-140px)]">
+      <ModalShell
+        open={isDraftListOpen}
+        title="下書きから編集"
+        onClose={() => setIsDraftListOpen(false)}
+        maxWidthClassName="max-w-2xl"
+        footer={
+          <button
+            type="button"
+            onClick={() => setIsDraftListOpen(false)}
+            className="w-full rounded-[20px] bg-gradient-to-r from-[rgba(245,158,11,0.96)] to-[rgba(251,191,36,0.96)] py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[16px] font-semibold text-white shadow-md transition-all duration-200 hover:opacity-95"
+          >
+            閉じる
+          </button>
+        }
+      >
               {draftArticles.length === 0 && (
                 <div className="rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-8 text-center">
                   <p className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.5)]">
@@ -1120,19 +1427,7 @@ export default function PostArticle() {
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="px-6 py-4 bg-gradient-to-br from-[#f9f9f9] to-white border-t border-[rgba(0,0,0,0.1)]">
-              <button
-                type="button"
-                onClick={() => setIsDraftListOpen(false)}
-                className="w-full bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] rounded-xl py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] transition-all duration-200 shadow-md hover:shadow-lg"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </ModalShell>
 
       {isActivityModalOpen && (
         <div
@@ -1569,36 +1864,38 @@ export default function PostArticle() {
               </button>
             </div>
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-140px)]">
-              <div className="grid grid-cols-2 gap-3">
-                {classOptions.map(option => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => {
-                      setClassInfo(option.id);
-                      setIsClassOpen(false);
-                    }}
-                    className={`border-2 rounded-xl px-4 py-3 text-left transition-all duration-200 hover:shadow-md ${
-                      classInfo === option.id 
-                        ? 'bg-gradient-to-br from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] border-[rgba(255,209,131,1)]' 
-                        : 'bg-gradient-to-br from-white to-[#fffdf7] border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)]'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        classInfo === option.id 
-                          ? 'border-[rgba(0,0,0,0.3)]' 
-                          : 'border-[rgba(0,0,0,0.3)]'
-                      }`}>
-                        {classInfo === option.id && <div className="w-2 h-2 rounded-full bg-[rgba(0,0,0,0.7)]" />}
+              {classOptions.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {classOptions.map(option => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setClassInfo(option.label);
+                        setIsClassOpen(false);
+                      }}
+                      className={`border-2 rounded-xl px-4 py-3 text-left transition-all duration-200 hover:shadow-md ${
+                        classInfo === option.label
+                          ? 'bg-gradient-to-br from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] border-[rgba(255,209,131,1)]'
+                          : 'bg-gradient-to-br from-white to-[#fffdf7] border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)]'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="mt-1 w-4 h-4 rounded-full border-2 border-[rgba(0,0,0,0.3)] flex items-center justify-center">
+                          {classInfo === option.label && <div className="w-2 h-2 rounded-full bg-[rgba(0,0,0,0.7)]" />}
+                        </div>
+                        <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.7)]">
+                          {option.label}
+                        </span>
                       </div>
-                      <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.7)]">
-                        {option.label}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[rgba(0,0,0,0.08)] bg-[rgba(0,0,0,0.03)] px-4 py-5 text-[14px] text-[rgba(0,0,0,0.55)]">
+                  この学校に表示できるクラスがまだ登録されていません。
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 bg-gradient-to-br from-[#f9f9f9] to-white border-t border-[rgba(0,0,0,0.1)]">
               <button
@@ -1716,71 +2013,50 @@ export default function PostArticle() {
         </div>
       )}
 
-      {companyToDelete && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-          style={{ zIndex: 200 }}
-          onClick={() => {
-            if (!deletingCompanyId) {
-              setCompanyToDelete(null);
-            }
-          }}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] px-6 py-5 flex items-center justify-between">
-              <h3 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[20px] text-[rgba(0,0,0,0.8)]">
-                企業を削除
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!deletingCompanyId) {
-                    setCompanyToDelete(null);
-                  }
-                }}
-                className="hover:bg-white/30 rounded-full p-2 transition-colors disabled:opacity-50"
-                disabled={Boolean(deletingCompanyId)}
-              >
-                <X size={24} className="text-[rgba(0,0,0,0.7)]" />
-              </button>
-            </div>
-            <div className="p-6">
+      <ModalShell
+        open={Boolean(companyToDelete)}
+        title="企業を削除"
+        onClose={() => {
+          if (!deletingCompanyId) {
+            setCompanyToDelete(null);
+          }
+        }}
+        maxWidthClassName="max-w-md"
+        zIndexClassName="z-[200]"
+        closeDisabled={Boolean(deletingCompanyId)}
+        footer={
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setCompanyToDelete(null)}
+              disabled={Boolean(deletingCompanyId)}
+              className="flex-1 rounded-[20px] border border-[rgba(0,0,0,0.12)] bg-white py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-[rgba(0,0,0,0.65)] transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteCompany}
+              disabled={Boolean(deletingCompanyId)}
+              className="flex-1 rounded-[20px] bg-[linear-gradient(90deg,#cf3f37_0%,#b92e2e_100%)] py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-white shadow-md transition-all duration-200 hover:opacity-95 disabled:opacity-50"
+              style={{ border: "1px solid #a52828" }}
+            >
+              {deletingCompanyId ? "削除中..." : "削除する"}
+            </button>
+          </div>
+        }
+      >
+        {companyToDelete && (
+          <div>
               <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[15px] leading-[1.8] text-[rgba(0,0,0,0.72)]">
                 「{companyToDelete.label}」を企業一覧から削除します。
               </p>
               <p className="mt-2 font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] leading-[1.7] text-[rgba(0,0,0,0.5)]">
                 この操作は取り消せません。関連企業として選択済みの項目からも外れます。
               </p>
-            </div>
-            <div className="px-6 py-4 bg-gradient-to-br from-[#f9f9f9] to-white border-t border-[rgba(0,0,0,0.1)] flex gap-3">
-              <button
-                type="button"
-                onClick={() => setCompanyToDelete(null)}
-                disabled={Boolean(deletingCompanyId)}
-                className="flex-1 bg-white border border-[rgba(0,0,0,0.12)] hover:bg-[rgba(0,0,0,0.03)] rounded-xl py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.65)] transition-all duration-200 disabled:opacity-50"
-              >
-                キャンセル
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteCompany}
-                disabled={Boolean(deletingCompanyId)}
-                className="flex-1 rounded-xl py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-white transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50"
-                style={{
-                  background: "linear-gradient(90deg, #cf3f37 0%, #b92e2e 100%)",
-                  border: "1px solid #a52828",
-                  color: "#ffffff",
-                }}
-              >
-                {deletingCompanyId ? "削除中..." : "削除する"}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ModalShell>
     </>
   );
 }
