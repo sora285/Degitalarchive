@@ -31,3 +31,8 @@ export async function fetchSchools(): Promise<SchoolItem[]> {
   const data = await parseResponse<{ schools: SchoolItem[] }>(response);
   return data.schools;
 }
+
+export async function fetchSchoolBySlug(schoolId: string): Promise<SchoolItem | null> {
+  const schools = await fetchSchools();
+  return schools.find((school) => school.slug === schoolId) || null;
+}

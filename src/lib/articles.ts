@@ -9,7 +9,7 @@ export interface ArticleData {
   childArticles?: ArticleData[];
   title: string;
   content: string;
-  status?: 'draft' | 'published' | 'archived' | string;
+  status?: 'private_draft' | 'pending' | 'published' | 'archived' | string;
   sdgs: string[];
   sdgIds?: number[];
   category: string;
@@ -38,7 +38,7 @@ export interface ArticleData {
 export interface CreateArticleInput {
   schoolId: string;
   userId: number;
-  status: 'draft' | 'published';
+  status: 'private_draft' | 'pending' | 'published';
   title: string;
   content: string;
   grade: string;

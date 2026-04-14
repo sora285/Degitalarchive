@@ -1,7 +1,8 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import { setCurrentUser } from "../lib/session";
+import { fetchSchoolBySlug } from "../lib/schools";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -12,9 +13,35 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [schoolName, setSchoolName] = useState("学校");
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
-  const schoolName = localStorage.getItem("currentSchoolName") || "学校";
+  useEffect(() => {
+    if (!schoolId) {
+      setSchoolName("学校");
+      return;
+    }
+
+    let mounted = true;
+
+    fetchSchoolBySlug(schoolId)
+      .then((school) => {
+        if (!mounted) return;
+        const nextSchoolName = school?.name || "学校";
+        setSchoolName(nextSchoolName);
+        localStorage.setItem("currentSchoolName", nextSchoolName);
+        localStorage.setItem("currentSchoolId", schoolId);
+      })
+      .catch((fetchError) => {
+        console.error("学校名の取得に失敗しました:", fetchError);
+        if (!mounted) return;
+        setSchoolName("学校");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

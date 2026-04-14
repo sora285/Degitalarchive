@@ -1,13 +1,14 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, ChevronDown, Check } from "lucide-react";
 import { useEffect, useState } from "react";
-import { clearSession, getCurrentUser } from "../lib/session";
+import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const FILTER_STORAGE_KEY_PREFIX = "homeFilters:";
 
 interface FilterState {
   fiscalYear: string;
@@ -17,7 +18,6 @@ interface FilterState {
   tag: string;
   company: string;
   keyword: string;
-  parentActivities: boolean;
   childActivities: boolean;
 }
 
@@ -45,9 +45,30 @@ const DEFAULT_FILTERS: FilterState = {
   tag: "",
   company: "",
   keyword: "",
-  parentActivities: false,
   childActivities: false,
 };
+
+function getStoredFilterKey(schoolId?: string) {
+  return `${FILTER_STORAGE_KEY_PREFIX}${schoolId || "default"}`;
+}
+
+function normalizeStoredFilters(raw: unknown): FilterState {
+  if (!raw || typeof raw !== "object") {
+    return DEFAULT_FILTERS;
+  }
+
+  const candidate = raw as Partial<FilterState>;
+  return {
+    fiscalYear: typeof candidate.fiscalYear === "string" ? candidate.fiscalYear : DEFAULT_FILTERS.fiscalYear,
+    sdgs: Array.isArray(candidate.sdgs) ? candidate.sdgs.map(String) : [],
+    category: Array.isArray(candidate.category) ? candidate.category.map(String) : [],
+    grade: typeof candidate.grade === "string" ? candidate.grade : "",
+    tag: typeof candidate.tag === "string" ? candidate.tag : "",
+    company: typeof candidate.company === "string" ? candidate.company : "",
+    keyword: typeof candidate.keyword === "string" ? candidate.keyword : "",
+    childActivities: Boolean(candidate.childActivities),
+  };
+}
 
 function getSdgNumber(sdgText: string) {
   const match = sdgText.match(/^(\d+)\./);
@@ -57,6 +78,12 @@ function getSdgNumber(sdgText: string) {
 function getSdgIconUrl(sdgText: string) {
   const num = getSdgNumber(sdgText);
   return num ? `/images/sdg_icon_${num.padStart(2, "0")}_ja_2.png` : "";
+}
+
+function getStatusLabel(status?: string) {
+  if (status === "private_draft") return "下書き";
+  if (status === "pending") return "未承認";
+  return "承認済み";
 }
 
 const SDG_NAME_MAP: Record<string, string> = {
@@ -87,7 +114,7 @@ function normalizeSdgLabel(sdgText: string) {
 function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
@@ -297,10 +324,9 @@ function MultiSelectFilter({ label, options, values, onChange }: {
   );
 }
 
-function SideMenu({ filters, setFilters, onSearch, onReset, options, showTeacherLogin, onTeacherLogin }: {
+function SideMenu({ filters, setFilters, onReset, options, showTeacherLogin, onTeacherLogin }: {
   filters: FilterState; 
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
-  onSearch: () => void;
   onReset: () => void;
   options: {
     fiscalYears: string[];
@@ -372,14 +398,7 @@ function SideMenu({ filters, setFilters, onSearch, onReset, options, showTeacher
           />
         </div>
         
-        <div className="flex items-center gap-2 mt-6 mb-4 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, parentActivities: !prev.parentActivities }))}>
-          <div className={`bg-white border-2 border-[rgba(0,0,0,0.2)] rounded-[4px] size-[18px] flex items-center justify-center hover:border-[rgba(255,209,131,0.93)] transition-colors ${filters.parentActivities ? 'bg-[rgba(255,209,131,0.5)]' : ''}`}>
-            {filters.parentActivities && <div className="w-2 h-2 bg-[rgba(0,0,0,0.7)] rounded-sm" />}
-          </div>
-          <p className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)]">親活動から検索</p>
-        </div>
-
-        <div className="flex items-center gap-2 mb-6 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, childActivities: !prev.childActivities }))}>
+        <div className="flex items-center gap-2 mt-6 mb-6 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, childActivities: !prev.childActivities }))}>
           <div className={`bg-white border-2 border-[rgba(0,0,0,0.2)] rounded-[4px] size-[18px] flex items-center justify-center hover:border-[rgba(255,209,131,0.93)] transition-colors ${filters.childActivities ? 'bg-[rgba(255,209,131,0.5)]' : ''}`}>
             {filters.childActivities && <div className="w-2 h-2 bg-[rgba(0,0,0,0.7)] rounded-sm" />}
           </div>
@@ -387,16 +406,9 @@ function SideMenu({ filters, setFilters, onSearch, onReset, options, showTeacher
         </div>
         
         <button
-          onClick={onSearch}
-          className="w-full bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl h-[48px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
-        >
-          この条件で検索
-        </button>
-
-        <button
           type="button"
           onClick={onReset}
-          className="mt-2 w-full rounded-lg border border-[rgba(0,0,0,0.1)] bg-white py-2.5 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[13px] text-[rgba(0,0,0,0.56)] shadow-sm transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] hover:shadow-md"
+          className="w-full rounded-lg border border-[rgba(0,0,0,0.1)] bg-white py-2.5 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[13px] text-[rgba(0,0,0,0.56)] shadow-sm transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] hover:shadow-md"
         >
           フィルターをリセット
         </button>
@@ -426,21 +438,23 @@ function Article({
   schoolId?: string;
   canViewStatus: boolean;
 }) {
-  const statusLabel = article.status === "draft" ? "未承認" : "承認済み";
+  const statusLabel = getStatusLabel(article.status);
   const statusClasses =
-    article.status === "draft"
+    article.status === "private_draft"
+      ? "bg-[rgba(71,85,105,0.12)] text-[rgba(51,65,85,0.92)] border-[rgba(71,85,105,0.22)]"
+      : article.status === "pending"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
       : "bg-[rgba(34,197,94,0.12)] text-[rgba(22,101,52,0.92)] border-[rgba(34,197,94,0.22)]";
   const activityRelationLabel = article.isChildActivity
     ? "子活動"
     : article.isParentActivity
       ? "親活動"
-      : "単独活動";
+      : "親活動";
   const activityRelationClasses = article.isChildActivity
     ? "bg-[rgba(59,130,246,0.12)] text-[rgba(29,78,216,0.92)] border-[rgba(59,130,246,0.22)]"
     : article.isParentActivity
       ? "bg-[rgba(245,158,11,0.14)] text-[rgba(146,64,14,0.92)] border-[rgba(245,158,11,0.26)]"
-      : "bg-[rgba(0,0,0,0.05)] text-[rgba(0,0,0,0.52)] border-[rgba(0,0,0,0.08)]";
+      : "bg-[rgba(245,158,11,0.14)] text-[rgba(146,64,14,0.92)] border-[rgba(245,158,11,0.26)]";
 
   // SDGs号に応じた背景色を返す（フォールバック用）
   const getSdgColor = (sdgText: string) => {
@@ -621,7 +635,7 @@ function Article({
 export default function Home() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
   const isAdmin = currentUser?.role === "admin";
   const canPostArticle = Boolean(currentUser);
   const canViewStatus = Boolean(currentUser);
@@ -630,8 +644,16 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [isPendingListOpen, setIsPendingListOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLogoutDialogOpen(false);
+    if (schoolId) {
+      localStorage.setItem("currentSchoolId", schoolId);
+    }
+    await logoutCurrentUser();
+    navigate(`/schools/${schoolId}/home`);
+  };
 
   const splitValues = (value?: string) =>
     String(value || "")
@@ -669,20 +691,17 @@ export default function Home() {
           .toLowerCase()
           .includes(filters.keyword.toLowerCase())
       ) return false;
-      return (
-        (!filters.parentActivities || article.isParentActivity) &&
-        (!filters.childActivities || article.isChildActivity)
-      );
-    });
-  };
 
-  const handleSearch = () => {
-    setAppliedFilters(filters);
+      if (filters.childActivities) {
+        return Boolean(article.isChildActivity);
+      }
+
+      return !article.isChildActivity;
+    });
   };
 
   const handleResetFilters = () => {
     setFilters(DEFAULT_FILTERS);
-    setAppliedFilters(DEFAULT_FILTERS);
   };
 
   useEffect(() => {
@@ -721,8 +740,39 @@ export default function Home() {
     };
   }, [schoolId]);
 
-  const filteredArticles = filterArticles(articles, appliedFilters);
-  const pendingArticles = articles.filter((article) => article.status === "draft");
+  useEffect(() => {
+    if (!schoolId) {
+      return;
+    }
+
+    try {
+      const stored = sessionStorage.getItem(getStoredFilterKey(schoolId));
+      if (!stored) {
+        setFilters(DEFAULT_FILTERS);
+        return;
+      }
+
+      setFilters(normalizeStoredFilters(JSON.parse(stored)));
+    } catch (error) {
+      console.error("フィルター状態の復元に失敗しました:", error);
+      setFilters(DEFAULT_FILTERS);
+    }
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) {
+      return;
+    }
+
+    try {
+      sessionStorage.setItem(getStoredFilterKey(schoolId), JSON.stringify(filters));
+    } catch (error) {
+      console.error("フィルター状態の保存に失敗しました:", error);
+    }
+  }, [schoolId, filters]);
+
+  const filteredArticles = filterArticles(articles, filters);
+  const pendingArticles = articles.filter((article) => article.status === "pending");
   
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="home">
@@ -730,7 +780,6 @@ export default function Home() {
       <SideMenu
         filters={filters}
         setFilters={setFilters}
-        onSearch={handleSearch}
         onReset={handleResetFilters}
         options={filterOptions}
         showTeacherLogin={!currentUser}
@@ -748,7 +797,7 @@ export default function Home() {
             onClick={() => navigate(`/schools/${schoolId}/post`)}
             className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
           >
-            + 記事を投稿
+            + 親活動を作成
           </button>
         )}
       </div>
@@ -769,10 +818,10 @@ export default function Home() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[24px] text-[rgba(0,0,0,0.82)]">
-                  未承認一覧
+                  承認一覧
                 </p>
                 <p className="mt-1 text-[14px] text-[rgba(0,0,0,0.52)]">
-                  承認待ちの記事をここから確認できます
+                  未承認の記事をここから確認して承認できます
                 </p>
               </div>
               <span className="rounded-full bg-[rgba(220,38,38,0.1)] px-4 py-2 text-[13px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(185,28,28,0.9)]">
@@ -785,7 +834,7 @@ export default function Home() {
               onClick={() => setIsPendingListOpen((prev) => !prev)}
               className="mt-5 rounded-xl border border-[rgba(0,0,0,0.08)] bg-[rgba(255,250,240,0.8)] px-4 py-3 text-[14px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[rgba(0,0,0,0.72)] transition-all duration-200 hover:border-[rgba(255,209,131,0.6)] hover:bg-[rgba(255,247,234,1)]"
             >
-              {isPendingListOpen ? "未承認一覧を閉じる" : "未承認一覧を表示"}
+              {isPendingListOpen ? "承認一覧を閉じる" : "承認一覧を表示"}
             </button>
 
             {isPendingListOpen && (
@@ -865,12 +914,7 @@ export default function Home() {
         confirmLabel="ログアウト"
         onCancel={() => setIsLogoutDialogOpen(false)}
         onConfirm={() => {
-          setIsLogoutDialogOpen(false);
-          if (schoolId) {
-            localStorage.setItem("currentSchoolId", schoolId);
-          }
-          clearSession();
-          navigate(`/schools/${schoolId}/home`);
+          void handleLogout();
         }}
       />
     </div>

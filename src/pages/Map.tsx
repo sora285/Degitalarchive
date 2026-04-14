@@ -1,12 +1,19 @@
 import { useNavigate, useParams } from "react-router";
 import { LogOut, MapPin } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { clearSession, getCurrentUser } from "../lib/session";
+import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { ArticleData, fetchArticles } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+function getStatusLabel(status?: string) {
+  if (status === "private_draft") return "下書き";
+  if (status === "pending") return "未承認";
+  return "承認済み";
+}
 
 function buildDisplayMarkers(articles: ArticleData[]) {
   const articleGroups = new globalThis.Map<string, ArticleData[]>();
@@ -73,10 +80,10 @@ function buildMarkerIcon(title: string, showLabel: boolean) {
   };
 }
 
-function Header() {
+function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
@@ -107,13 +114,7 @@ function Header() {
         </div>
         {currentUser && (
           <button
-            onClick={() => {
-              if (schoolId) {
-                localStorage.setItem("currentSchoolId", schoolId);
-              }
-              clearSession();
-              navigate(`/schools/${schoolId}/home`);
-            }}
+            onClick={onLogoutClick}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
           >
             <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -128,7 +129,7 @@ function Header() {
 function MapView({ articles }: { articles: ArticleData[] }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
   const canViewStatus = Boolean(currentUser);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -150,9 +151,9 @@ function MapView({ articles }: { articles: ArticleData[] }) {
     return article.imageUrl || FIXED_ARTICLE_IMAGE;
   };
 
-  const getStatusLabel = (article: ArticleData) => (article.status === "draft" ? "未承認" : "承認済み");
+  const getStatusLabelForArticle = (article: ArticleData) => getStatusLabel(article.status);
   const getActivityRelationLabel = (article: ArticleData) =>
-    article.isChildActivity ? "子活動" : article.isParentActivity ? "親活動" : "単独活動";
+    article.isChildActivity ? "子活動" : "親活動";
 
   // 簡易地図のフォールバック表示用
   const latLngToPixel = (lat: number, lng: number) => {
@@ -299,7 +300,7 @@ function MapView({ articles }: { articles: ArticleData[] }) {
                   <span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">
                     ${getActivityRelationLabel(article)}
                   </span>
-                  ${canViewStatus ? `<span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">${getStatusLabel(article)}</span>` : ""}
+                  ${canViewStatus ? `<span style="display:inline-flex;align-items:center;border:1px solid rgba(0,0,0,0.08);border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;color:rgba(0,0,0,0.68);background:rgba(255,255,255,0.95);">${getStatusLabelForArticle(article)}</span>` : ""}
                 </div>
                 <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;line-height:1.4;color:rgba(0,0,0,0.84);">
                   ${article.title}
@@ -470,11 +471,21 @@ function MapView({ articles }: { articles: ArticleData[] }) {
 export default function Map() {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
   const canPostArticle = Boolean(currentUser);
   const [articles, setArticles] = useState<ArticleData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLogoutDialogOpen(false);
+    if (schoolId) {
+      localStorage.setItem("currentSchoolId", schoolId);
+    }
+    await logoutCurrentUser();
+    navigate(`/schools/${schoolId}/home`);
+  };
 
   useEffect(() => {
     if (!schoolId) {
@@ -509,7 +520,7 @@ export default function Map() {
 
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] h-screen flex flex-col" data-name="map">
-      <Header />
+      <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} />
       <div className="relative flex-1 pt-[67px] flex flex-col">
         {canPostArticle && (
           <div className="pointer-events-none absolute right-8 top-[91px] z-30">
@@ -533,6 +544,16 @@ export default function Map() {
         )}
         {!isLoading && <MapView articles={articles} />}
       </div>
+      <ConfirmDialog
+        open={isLogoutDialogOpen}
+        title="ログアウトしますか？"
+        description="ログアウトすると、教員向けの操作メニューは閉じられます。"
+        confirmLabel="ログアウト"
+        onCancel={() => setIsLogoutDialogOpen(false)}
+        onConfirm={() => {
+          void handleLogout();
+        }}
+      />
     </div>
   );
 }

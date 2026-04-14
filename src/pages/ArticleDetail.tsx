@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, LogOut } from "lucide-react";
-import { clearSession, getCurrentUser } from "../lib/session";
+import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { ArticleData, deleteArticle, fetchArticleById, updateArticle } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+function getArticleStatusLabel(status?: string) {
+  if (status === "private_draft") return "下書き";
+  if (status === "pending") return "未承認";
+  return "承認済み";
+}
 
 function getSdgNumber(sdgText: string) {
   const match = sdgText.match(/^(\d+)\./);
@@ -42,10 +49,28 @@ function getSdgColor(sdgText: string) {
   return colors[num] || "#4C9F38";
 }
 
-function Header() {
+function buildMapEmbedUrl(article: ArticleData) {
+  const hasCoordinates =
+    Number.isFinite(article.location?.lat) &&
+    Number.isFinite(article.location?.lng) &&
+    article.location.lat !== 0 &&
+    article.location.lng !== 0;
+
+  if (hasCoordinates) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(`${article.location.lat},${article.location.lng}`)}&z=16&output=embed`;
+  }
+
+  if (article.location?.name) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(article.location.name)}&z=16&output=embed`;
+  }
+
+  return "";
+}
+
+function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
@@ -72,13 +97,7 @@ function Header() {
         {currentUser && (
           <>
             <button
-              onClick={() => {
-                if (schoolId) {
-                  localStorage.setItem("currentSchoolId", schoolId);
-                }
-                clearSession();
-                navigate(`/schools/${schoolId}/home`);
-              }}
+              onClick={onLogoutClick}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
             >
               <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -102,21 +121,23 @@ function RelatedArticleCard({
   canViewStatus: boolean;
   onClick: () => void;
 }) {
-  const statusLabel = article.status === "draft" ? "未承認" : "承認済み";
+  const statusLabel = getArticleStatusLabel(article.status);
   const statusClasses =
-    article.status === "draft"
+    article.status === "private_draft"
+      ? "bg-[rgba(71,85,105,0.12)] text-[rgba(51,65,85,0.92)] border-[rgba(71,85,105,0.22)]"
+      : article.status === "pending"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
       : "bg-[rgba(34,197,94,0.12)] text-[rgba(22,101,52,0.92)] border-[rgba(34,197,94,0.22)]";
   const activityRelationLabel = article.isChildActivity
     ? "子活動"
     : article.isParentActivity
       ? "親活動"
-      : "単独活動";
+      : "親活動";
   const activityRelationClasses = article.isChildActivity
     ? "bg-[rgba(59,130,246,0.12)] text-[rgba(29,78,216,0.92)] border-[rgba(59,130,246,0.22)]"
     : article.isParentActivity
       ? "bg-[rgba(245,158,11,0.14)] text-[rgba(146,64,14,0.92)] border-[rgba(245,158,11,0.26)]"
-      : "bg-[rgba(0,0,0,0.05)] text-[rgba(0,0,0,0.52)] border-[rgba(0,0,0,0.08)]";
+      : "bg-[rgba(245,158,11,0.14)] text-[rgba(146,64,14,0.92)] border-[rgba(245,158,11,0.26)]";
 
   return (
     <button
@@ -187,24 +208,31 @@ export default function ArticleDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
   const isAdmin = currentUser?.role === "admin";
   const [article, setArticle] = useState<ArticleData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+  const isOwner = Boolean(article && currentUser?.id === article.authorUserId);
+  const canCreateChildActivity = Boolean(currentUser) && Boolean(article) && !article?.parentActivityId;
   const canEditArticle =
     Boolean(article) &&
     (
       isAdmin ||
       (currentUser?.role === "user" &&
-        article?.status === "draft" &&
+        article?.status !== "published" &&
         article?.authorUserId === currentUser?.id)
     );
-  const statusLabel = article?.status === "draft" ? "未承認" : "承認済み";
+  const canMoveToDraft = Boolean(article) && (isAdmin || canEditArticle) && article?.status !== "private_draft";
+  const canDeleteArticle = Boolean(article) && (isAdmin || (isOwner && article?.status === "private_draft"));
+  const statusLabel = getArticleStatusLabel(article?.status);
   const statusClasses =
-    article?.status === "draft"
+    article?.status === "private_draft"
+      ? "bg-[rgba(71,85,105,0.12)] text-[rgba(51,65,85,0.92)] border-[rgba(71,85,105,0.22)]"
+      : article?.status === "pending"
       ? "bg-[rgba(0,0,0,0.06)] text-[rgba(0,0,0,0.58)] border-[rgba(0,0,0,0.08)]"
       : "bg-[rgba(34,197,94,0.12)] text-[rgba(22,101,52,0.92)] border-[rgba(34,197,94,0.22)]";
 
@@ -218,6 +246,7 @@ export default function ArticleDetail() {
       ? `/schools/${schoolId}/map`
       : `/schools/${schoolId}/home`;
   const backLabel = from === "map" ? "地図に戻る" : "一覧に戻る";
+  const mapEmbedUrl = article ? buildMapEmbedUrl(article) : "";
 
   useEffect(() => {
     if (!schoolId || !id) {
@@ -257,20 +286,72 @@ export default function ArticleDetail() {
     };
   }, [id, schoolId]);
 
+  const handleLogout = async () => {
+    setIsLogoutDialogOpen(false);
+    if (schoolId) {
+      localStorage.setItem("currentSchoolId", schoolId);
+    }
+    await logoutCurrentUser();
+    navigate(`/schools/${schoolId}/home`);
+  };
+
+  const handleStatusUpdate = async (nextStatus: "private_draft" | "pending" | "published") => {
+    if (!schoolId || !article || !currentUser) {
+      return;
+    }
+
+    setIsTogglingStatus(true);
+    try {
+      const updated = await updateArticle(article.id, {
+        schoolId,
+        userId: currentUser.id,
+        status: nextStatus,
+        title: article.title,
+        content: article.content,
+        grade: article.grade || "",
+        locationName: article.location?.name || "",
+        latitude: article.location?.lat ? String(article.location.lat) : "",
+        longitude: article.location?.lng ? String(article.location.lng) : "",
+        sdgIds: (article.sdgIds || []).map((value) => String(value)),
+        categoryIds: (article.categoryIds || []).map((value) => String(value)),
+        companyIds: (article.companyIds || []).map((value) => String(value)),
+        libraryImageUrls: article.imageUrls || [],
+        uploadedImages: [],
+        parentActivityId: article.parentActivityId ?? null,
+        childActivityIds: article.childActivityIds || [],
+      });
+      setArticle(updated);
+    } catch (statusError) {
+      alert(statusError instanceof Error ? statusError.message : "公開状態の更新に失敗しました。");
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
+
   return (
     <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="article-detail">
-      <Header />
+      <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} />
 
       <div className="max-w-7xl mx-auto px-8 py-12">
-        <button
-          onClick={() => navigate(backDestination)}
-          className="mb-8 flex items-center gap-2 bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
-        >
-          <ArrowLeft size={18} />
-          {backLabel}
-        </button>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <button
+            onClick={() => navigate(backDestination)}
+            className="flex items-center gap-2 bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
+          >
+            <ArrowLeft size={18} />
+            {backLabel}
+          </button>
+          {canCreateChildActivity && article && !isLoading && !error && (
+            <button
+              onClick={() => navigate(`/schools/${schoolId}/post?parentActivityId=${article.id}`)}
+              className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
+            >
+              + 小活動を作成
+            </button>
+          )}
+        </div>
 
-        {article && !isLoading && !error && (canEditArticle || isAdmin) && (
+        {article && !isLoading && !error && (canEditArticle || isAdmin || canDeleteArticle) && (
           <div className="mb-6 flex items-center gap-3">
             {canEditArticle && (
               <button
@@ -280,67 +361,65 @@ export default function ArticleDetail() {
                 編集する
               </button>
             )}
-            {isAdmin && (
+            {(isAdmin || canMoveToDraft || canDeleteArticle) && (
               <>
-                <button
-                  disabled={isTogglingStatus}
-                  onClick={async () => {
-                    if (!schoolId || !article || !currentUser) return;
+                {isAdmin && article.status !== "published" && (
+                  <button
+                    disabled={isTogglingStatus}
+                    onClick={() => {
+                      void handleStatusUpdate("published");
+                    }}
+                    className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
+                  >
+                    {isTogglingStatus ? "更新中..." : "公開する"}
+                  </button>
+                )}
+                {isAdmin && article.status !== "pending" && (
+                  <button
+                    disabled={isTogglingStatus}
+                    onClick={() => {
+                      void handleStatusUpdate("pending");
+                    }}
+                    className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
+                  >
+                    {isTogglingStatus ? "更新中..." : "未承認に戻す"}
+                  </button>
+                )}
+                {canMoveToDraft && (
+                  <button
+                    disabled={isTogglingStatus}
+                    onClick={() => {
+                      void handleStatusUpdate("private_draft");
+                    }}
+                    className="rounded-xl border border-[rgba(71,85,105,0.24)] bg-[rgba(71,85,105,0.08)] px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(51,65,85,0.9)] shadow-sm transition-all duration-200 hover:bg-[rgba(71,85,105,0.12)] disabled:opacity-60"
+                  >
+                    {isTogglingStatus ? "更新中..." : "下書きに戻す"}
+                  </button>
+                )}
+                {canDeleteArticle && (
+                  <button
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      if (!schoolId || !article) return;
+                      if (!window.confirm(`「${article.title}」を削除しますか？`)) {
+                        return;
+                      }
 
-                    const nextStatus = article.status === "draft" ? "published" : "draft";
-                    setIsTogglingStatus(true);
-                    try {
-                      const updated = await updateArticle(article.id, {
-                        schoolId,
-                        userId: currentUser.id,
-                        status: nextStatus,
-                        title: article.title,
-                        content: article.content,
-                        grade: article.grade || "",
-                        locationName: article.location?.name || "",
-                        latitude: article.location?.lat ? String(article.location.lat) : "",
-                        longitude: article.location?.lng ? String(article.location.lng) : "",
-                        sdgIds: (article.sdgIds || []).map((value) => String(value)),
-                        categoryIds: (article.categoryIds || []).map((value) => String(value)),
-                        companyIds: (article.companyIds || []).map((value) => String(value)),
-                        libraryImageUrls: article.imageUrls || [],
-                        uploadedImages: [],
-                        parentActivityId: article.parentActivityId ?? null,
-                        childActivityIds: article.childActivityIds || [],
-                      });
-                      setArticle(updated);
-                    } catch (toggleError) {
-                      alert(toggleError instanceof Error ? toggleError.message : "公開状態の更新に失敗しました。");
-                    } finally {
-                      setIsTogglingStatus(false);
-                    }
-                  }}
-                  className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
-                >
-                  {isTogglingStatus ? "切替中..." : article.status === "draft" ? "公開にする" : "非公開にする"}
-                </button>
-                <button
-                  disabled={isDeleting}
-                  onClick={async () => {
-                    if (!schoolId || !article) return;
-                    if (!window.confirm(`「${article.title}」を削除しますか？`)) {
-                      return;
-                    }
-
-                    setIsDeleting(true);
-                    try {
-                      await deleteArticle(schoolId, article.id);
-                      navigate(`/schools/${schoolId}/home`);
-                    } catch (deleteError) {
-                      alert(deleteError instanceof Error ? deleteError.message : "記事の削除に失敗しました。");
-                    } finally {
-                      setIsDeleting(false);
-                    }
-                  }}
-                  className="rounded-xl border border-[rgba(185,28,28,0.28)] bg-[rgba(220,38,38,0.08)] px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(185,28,28,0.9)] shadow-sm transition-all duration-200 hover:bg-[rgba(220,38,38,0.12)] disabled:opacity-60"
-                >
-                  {isDeleting ? "削除中..." : "削除する"}
-                </button>
+                      setIsDeleting(true);
+                      try {
+                        await deleteArticle(schoolId, article.id);
+                        navigate(`/schools/${schoolId}/home`);
+                      } catch (deleteError) {
+                        alert(deleteError instanceof Error ? deleteError.message : "記事の削除に失敗しました。");
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    }}
+                    className="rounded-xl border border-[rgba(185,28,28,0.28)] bg-[rgba(220,38,38,0.08)] px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(185,28,28,0.9)] shadow-sm transition-all duration-200 hover:bg-[rgba(220,38,38,0.12)] disabled:opacity-60"
+                  >
+                    {isDeleting ? "削除中..." : "削除する"}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -434,6 +513,19 @@ export default function ArticleDetail() {
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">日付: {article.date || "未設定"}</p>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">関連企業様：{article.company || "未設定"}</p>
                   <p className="text-[16px] text-[rgba(0,0,0,0.7)]">場所: {article.location?.name || "未設定"}</p>
+                  {mapEmbedUrl && (
+                    <div className="pt-3">
+                      <div className="overflow-hidden rounded-2xl border border-[rgba(0,0,0,0.08)] shadow-sm">
+                        <iframe
+                          title="活動場所の地図"
+                          src={mapEmbedUrl}
+                          className="h-[280px] w-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {article.tags.map((tag, index) => (
                       <span key={index} className="inline-block px-2.5 py-1 bg-gradient-to-r from-[rgba(255,209,131,0.2)] to-[rgba(255,220,150,0.2)] border border-[rgba(255,209,131,0.4)] rounded-full text-[12px] text-[rgba(0,0,0,0.7)]">
@@ -511,6 +603,16 @@ export default function ArticleDetail() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={isLogoutDialogOpen}
+        title="ログアウトしますか？"
+        description="ログアウトすると、教員向けの操作メニューは閉じられます。"
+        confirmLabel="ログアウト"
+        onCancel={() => setIsLogoutDialogOpen(false)}
+        onConfirm={() => {
+          void handleLogout();
+        }}
+      />
     </div>
   );
 }

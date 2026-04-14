@@ -7,7 +7,7 @@ import {
   removeArticle,
   updateArticle,
 } from '../services/articleService.js';
-import { requireAdmin, requireAuthenticated } from '../middleware/auth.js';
+import { requireAuthenticated } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -19,6 +19,18 @@ function isStaffOfSchool(req, schoolId) {
   );
 }
 
+function canReadArticle(req, schoolId, article) {
+  if (article.status === 'private_draft') {
+    return Boolean(
+      req.auth &&
+      req.auth.schoolId === schoolId &&
+      (req.auth.userId === article.authorUserId || req.auth.role === 'admin')
+    );
+  }
+
+  return article.status === 'published' || article.status === 'pending';
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const schoolId = String(req.query.schoolId || '');
@@ -26,8 +38,9 @@ router.get('/', async (req, res, next) => {
       return res.status(400).json({ message: 'schoolId は必須です。' });
     }
 
-    const includeDrafts = isStaffOfSchool(req, schoolId);
-    const articles = await listArticlesBySchoolId(schoolId, { includeDrafts });
+    const articles = await listArticlesBySchoolId(schoolId, {
+      viewerUserId: isStaffOfSchool(req, schoolId) ? req.auth?.userId : 0,
+    });
     return res.status(200).json({ articles });
   } catch (error) {
     return next(error);
@@ -48,14 +61,17 @@ router.get('/:id', async (req, res, next) => {
     }
 
     const includeDraftRelations = isStaffOfSchool(req, schoolId);
-    const article = await getArticleById({ schoolId, articleId, includeDraftRelations });
+    const article = await getArticleById({
+      schoolId,
+      articleId,
+      includeDraftRelations,
+      viewerUserId: includeDraftRelations ? req.auth?.userId : 0,
+    });
     if (!article) {
       return res.status(404).json({ message: '記事が見つかりません。' });
     }
 
-    const canReadDraft = article.status !== 'draft' || isStaffOfSchool(req, schoolId);
-
-    if (!canReadDraft) {
+    if (!canReadArticle(req, schoolId, article)) {
       return res.status(404).json({ message: '記事が見つかりません。' });
     }
 
@@ -78,14 +94,17 @@ router.get('/:id/image', async (req, res, next) => {
       return res.status(400).json({ message: '記事IDが不正です。' });
     }
 
-    const article = await getArticleById({ schoolId, articleId });
+    const article = await getArticleById({
+      schoolId,
+      articleId,
+      includeDraftRelations: isStaffOfSchool(req, schoolId),
+      viewerUserId: isStaffOfSchool(req, schoolId) ? req.auth?.userId : 0,
+    });
     if (!article) {
       return res.status(404).json({ message: '記事が見つかりません。' });
     }
 
-    const canReadDraft = article.status !== 'draft' || isStaffOfSchool(req, schoolId);
-
-    if (!canReadDraft) {
+    if (!canReadArticle(req, schoolId, article)) {
       return res.status(404).json({ message: '記事画像が見つかりません。' });
     }
 
@@ -116,7 +135,9 @@ router.post('/', requireAuthenticated, async (req, res, next) => {
     const article = await createArticle({
       schoolId,
       userId: actingUserId,
-      status: isAdmin ? String(req.body?.status || 'published') : 'draft',
+      status: isAdmin
+        ? String(req.body?.status || 'published')
+        : (String(req.body?.status || '') === 'private_draft' ? 'private_draft' : 'pending'),
       title: String(req.body?.title || ''),
       content: String(req.body?.content || ''),
       grade: String(req.body?.grade || ''),
@@ -168,8 +189,8 @@ router.put('/:id', requireAuthenticated, async (req, res, next) => {
         return res.status(403).json({ message: '自分が作成した記事のみ編集できます。' });
       }
 
-      if (existingArticle.status !== 'draft') {
-        return res.status(403).json({ message: '一般教員は非公開の記事のみ編集できます。' });
+      if (existingArticle.status === 'published') {
+        return res.status(403).json({ message: '一般教員は公開済みの記事を編集できません。' });
       }
     }
 
@@ -177,7 +198,9 @@ router.put('/:id', requireAuthenticated, async (req, res, next) => {
       articleId,
       schoolId,
       userId: Number(req.auth?.userId || req.body?.userId || 0),
-      status: isAdmin ? String(req.body?.status || existingArticle.status || 'published') : 'draft',
+      status: isAdmin
+        ? String(req.body?.status || existingArticle.status || 'published')
+        : (String(req.body?.status || '') === 'private_draft' ? 'private_draft' : 'pending'),
       title: String(req.body?.title || ''),
       content: String(req.body?.content || ''),
       grade: String(req.body?.grade || ''),
@@ -199,7 +222,7 @@ router.put('/:id', requireAuthenticated, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res, next) => {
+router.delete('/:id', requireAuthenticated, async (req, res, next) => {
   try {
     const schoolId = String(req.query.schoolId || '');
     const articleId = Number(req.params.id);
@@ -210,6 +233,24 @@ router.delete('/:id', requireAdmin, async (req, res, next) => {
 
     if (!Number.isFinite(articleId) || articleId <= 0) {
       return res.status(400).json({ message: '記事IDが不正です。' });
+    }
+
+    const existingArticle = await getArticleById({
+      schoolId,
+      articleId,
+      includeDraftRelations: true,
+      viewerUserId: req.auth?.userId || 0,
+    });
+    if (!existingArticle) {
+      return res.status(404).json({ message: '記事が見つかりません。' });
+    }
+
+    const isAdmin = req.auth?.role === 'admin';
+    const isOwner = existingArticle.authorUserId === req.auth?.userId;
+    const canDeletePrivateDraft = existingArticle.status === 'private_draft' && isOwner;
+
+    if (!isAdmin && !canDeletePrivateDraft) {
+      return res.status(403).json({ message: '下書き記事の削除は本人のみ実行できます。' });
     }
 
     await removeArticle({ schoolId, articleId });

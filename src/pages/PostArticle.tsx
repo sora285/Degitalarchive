@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Upload, LogOut, MapPin, Search, Check, Plus, X, ChevronDown, Trash2 } from "lucide-react";
-import { clearSession, getCurrentUser } from "../lib/session";
+import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { fetchClasses, type ClassOption } from "../lib/classes";
 import { fetchSchools } from "../lib/schools";
 import { createCategory, fetchCategories, type CategoryOption } from "../lib/categories";
@@ -9,6 +9,7 @@ import { createCompany, deleteCompany, fetchCompanies, type CompanyOption } from
 import { fetchImageLibrary, type ImageLibraryItem } from "../lib/imageLibrary";
 import { ArticleData, createArticle, fetchArticleById, fetchArticles, updateArticle as updateArticleRequest } from "../lib/articles";
 import ModalShell from "../components/ui/ModalShell";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const DEFAULT_LOCATION_CENTER = { lat: 35.4560, lng: 139.6345 };
 
@@ -284,10 +285,10 @@ function LocationMap({
   );
 }
 
-function Header() {
+function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
@@ -314,13 +315,7 @@ function Header() {
         {currentUser && (
           <>
             <button
-              onClick={() => {
-                if (schoolId) {
-                  localStorage.setItem("currentSchoolId", schoolId);
-                }
-                clearSession();
-                navigate(`/schools/${schoolId}/home`);
-              }}
+              onClick={onLogoutClick}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white transition-all duration-200 shadow-sm hover:shadow-md"
             >
               <LogOut size={16} className="text-[rgba(0,0,0,0.6)]" />
@@ -337,11 +332,12 @@ export default function PostArticle() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser(schoolId);
   const isAdmin = currentUser?.role === "admin";
   const canEditPublishedArticle = isAdmin;
   const canUsePostEditor = Boolean(currentUser);
   const editingArticleId = Number(searchParams.get("articleId") || 0);
+  const preselectedParentActivityId = Number(searchParams.get("parentActivityId") || 0);
   const isEditMode = Number.isFinite(editingArticleId) && editingArticleId > 0;
   const [title, setTitle] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -379,17 +375,19 @@ export default function PostArticle() {
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitMode, setSubmitMode] = useState<"draft" | "published" | null>(null);
+  const [submitMode, setSubmitMode] = useState<"private_draft" | "pending" | "published" | null>(null);
   const [pageError, setPageError] = useState("");
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const [draftArticles, setDraftArticles] = useState<ArticleData[]>([]);
   const [isDraftListOpen, setIsDraftListOpen] = useState(false);
   const [activityArticles, setActivityArticles] = useState<ArticleData[]>([]);
 
   // 親子活動関連のstate
-  const [activityType, setActivityType] = useState<"parent" | "child" | "none">("none");
+  const [activityType, setActivityType] = useState<"parent" | "child">(
+    Number.isFinite(preselectedParentActivityId) && preselectedParentActivityId > 0 ? "child" : "parent"
+  );
   const [parentActivityId, setParentActivityId] = useState<number | null>(null);
-  const [childActivityIds, setChildActivityIds] = useState<number[]>([]);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
 
   // SDGsの選択肢
@@ -413,7 +411,7 @@ export default function PostArticle() {
     { id: "17", label: "17. パートナーシップで目標を達成しよう" },
   ];
 
-  const primarySubmitStatus: "draft" | "published" = isAdmin ? "published" : "draft";
+  const primarySubmitStatus: "pending" | "published" = isAdmin ? "published" : "pending";
 
   useEffect(() => {
     if (!schoolId) {
@@ -528,7 +526,7 @@ export default function PostArticle() {
         setDraftArticles(
           items.filter(
             (item) =>
-              item.status === "draft" &&
+              item.status === "private_draft" &&
               item.id !== editingArticleId &&
               item.authorUserId === currentUser?.id
           )
@@ -541,7 +539,22 @@ export default function PostArticle() {
     return () => {
       mounted = false;
     };
-  }, [schoolId, isAdmin, editingArticleId, currentUser?.id]);
+  }, [schoolId, editingArticleId, currentUser?.id, canUsePostEditor]);
+
+  useEffect(() => {
+    if (isEditMode) {
+      return;
+    }
+
+    if (Number.isFinite(preselectedParentActivityId) && preselectedParentActivityId > 0) {
+      setActivityType("child");
+      setParentActivityId(preselectedParentActivityId);
+      return;
+    }
+
+    setActivityType("parent");
+    setParentActivityId(null);
+  }, [preselectedParentActivityId, isEditMode]);
 
   useEffect(() => {
     if (!schoolId || !isEditMode || !canUsePostEditor) {
@@ -555,8 +568,8 @@ export default function PostArticle() {
     fetchArticleById(schoolId, editingArticleId)
       .then((article) => {
         if (!mounted) return;
-        if (!canEditPublishedArticle && article.status !== "draft") {
-          setPageError("一般教員は非公開の記事のみ編集できます。");
+        if (!canEditPublishedArticle && article.status === "published") {
+          setPageError("一般教員は公開済みの記事を編集できません。");
           return;
         }
         setTitle(article.title || "");
@@ -570,13 +583,10 @@ export default function PostArticle() {
         setCompanies((article.companyIds || []).map((id) => String(id)));
         setSelectedLibraryImages(article.imageUrls || []);
         setParentActivityId(article.parentActivityId ?? null);
-        setChildActivityIds(article.childActivityIds || []);
         setActivityType(
           article.parentActivityId
             ? "child"
-            : (article.childActivityIds || []).length > 0
-              ? "parent"
-              : "none"
+            : "parent"
         );
       })
       .catch((error) => {
@@ -727,6 +737,15 @@ export default function PostArticle() {
     );
   };
 
+  const getSelectedImageMeta = (url: string, index: number) => {
+    const selectedImage = imageLibrary.find((img) => img.url === url);
+    return {
+      name: selectedImage?.name || `保存済み画像 ${index + 1}`,
+      className: selectedImage?.className || "",
+      comment: selectedImage?.comment || "",
+    };
+  };
+
   const removeUploadedImage = (indexToRemove: number) => {
     setImages((prev) => prev.filter((_, index) => index !== indexToRemove));
     setImagePreviews((prev) => prev.filter((_, index) => index !== indexToRemove));
@@ -755,25 +774,15 @@ export default function PostArticle() {
     }
   };
 
-  // 小活動をトグル
-  const toggleChildActivity = (id: number) => {
-    setChildActivityIds(prev =>
-      prev.includes(id)
-        ? prev.filter(item => item !== id)
-        : [...prev, id]
-    );
-  };
-
-  const availableActivityArticles = activityArticles.filter((article) => article.id !== editingArticleId);
+  const availableActivityArticles = activityArticles.filter(
+    (article) => article.id !== editingArticleId && !article.parentActivityId
+  );
   const selectedParentArticle =
     parentActivityId == null
       ? null
       : availableActivityArticles.find((article) => article.id === parentActivityId) || null;
-  const selectedChildArticles = availableActivityArticles.filter((article) =>
-    childActivityIds.includes(article.id)
-  );
 
-  const handleSaveArticle = async (status: "draft" | "published") => {
+  const handleSaveArticle = async (status: "private_draft" | "pending" | "published") => {
     if (!schoolId) {
       alert("学校情報が見つかりません。");
       return;
@@ -790,8 +799,13 @@ export default function PostArticle() {
       return;
     }
 
+    if (activityType === "child" && !parentActivityId) {
+      alert("小活動として保存するには、親活動を選択してください。");
+      return;
+    }
+
     if (!isAdmin) {
-      status = "draft";
+      status = status === "private_draft" ? "private_draft" : "pending";
     }
 
     setSubmitMode(status);
@@ -813,15 +827,15 @@ export default function PostArticle() {
         libraryImageUrls: selectedLibraryImages,
         uploadedImages: imagePreviews,
         parentActivityId: activityType === "child" ? parentActivityId : null,
-        childActivityIds: activityType === "parent" ? childActivityIds : [],
+        childActivityIds: [],
       };
 
       if (isEditMode) {
         await updateArticleRequest(editingArticleId, payload);
-        alert(status === "draft" ? "下書きを保存しました。" : "記事を更新しました。");
+        alert(status === "private_draft" ? "下書きを保存しました。" : "記事を更新しました。");
       } else {
         await createArticle(payload);
-        alert(status === "draft" ? "下書きを保存しました。" : "記事を投稿しました。");
+        alert(status === "private_draft" ? "下書きを保存しました。" : "記事を投稿しました。");
       }
       navigate(`/schools/${schoolId}/home`);
     } catch (error) {
@@ -855,10 +869,19 @@ export default function PostArticle() {
     setShowResults(false);
   };
 
+  const handleLogout = async () => {
+    setIsLogoutDialogOpen(false);
+    if (schoolId) {
+      localStorage.setItem("currentSchoolId", schoolId);
+    }
+    await logoutCurrentUser();
+    navigate(`/schools/${schoolId}/home`);
+  };
+
   return (
     <>
       <div className="bg-gradient-to-br from-white to-[#fffaf0] min-h-screen pt-20" data-name="post-article">
-        <Header />
+        <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} />
         
         <div className="max-w-4xl mx-auto px-8 py-12">
           <div className="mb-6 flex items-center justify-between gap-4">
@@ -950,6 +973,75 @@ export default function PostArticle() {
                     ライブラリ: {selectedLibraryImages.length}枚
                   </p>
                 </div>
+
+                {(imagePreviews.length > 0 || selectedLibraryImages.length > 0) && (
+                  <div className="rounded-2xl border border-[rgba(0,0,0,0.08)] bg-[rgba(255,250,240,0.7)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.76)]">
+                        選択中の写真
+                      </p>
+                      <p className="text-[12px] text-[rgba(0,0,0,0.52)]">
+                        編集時はここから写真を外せます
+                      </p>
+                    </div>
+
+                    {imagePreviews.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-3 text-[12px] font-medium text-[rgba(0,0,0,0.52)]">アップロード済み</p>
+                        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                          {imagePreviews.map((preview, index) => (
+                            <div key={`${preview}-${index}`} className="relative overflow-hidden rounded-xl border border-[rgba(0,0,0,0.08)] bg-white">
+                              <img
+                                src={preview}
+                                alt={images[index]?.name || `upload-${index + 1}`}
+                                className="h-32 w-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeUploadedImage(index)}
+                                className="absolute right-2 top-2 rounded-full bg-white/92 p-2 shadow-md transition-colors hover:bg-white"
+                              >
+                                <X size={16} className="text-[rgba(0,0,0,0.72)]" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedLibraryImages.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-3 text-[12px] font-medium text-[rgba(0,0,0,0.52)]">保存済みの写真</p>
+                        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                          {selectedLibraryImages.map((url, index) => {
+                            const selectedImage = getSelectedImageMeta(url, index);
+                            return (
+                              <div key={`${url}-${index}`} className="relative overflow-hidden rounded-xl border border-[rgba(0,0,0,0.08)] bg-white">
+                                <img
+                                  src={url}
+                                  alt={selectedImage.name}
+                                  className="h-32 w-full object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLibraryImage(url)}
+                                  className="absolute right-2 top-2 rounded-full bg-white/92 p-2 shadow-md transition-colors hover:bg-white"
+                                >
+                                  <X size={16} className="text-[rgba(0,0,0,0.72)]" />
+                                </button>
+                                {selectedImage.name && (
+                                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+                                    <p className="truncate text-[12px] font-medium text-white">{selectedImage.name}</p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 画像アップロード */}
                 {imageMode === "upload" && (
@@ -1062,24 +1154,29 @@ export default function PostArticle() {
                           ✓ {selectedLibraryImages.length}枚を選択中
                         </p>
                         <div className="flex flex-col gap-3">
-                          {selectedLibraryImages.map((url) => {
-                            const selectedImage = imageLibrary.find((img) => img.url === url);
-                            if (!selectedImage) {
-                              return null;
-                            }
-
+                          {selectedLibraryImages.map((url, index) => {
+                            const selectedImage = getSelectedImageMeta(url, index);
                             return (
                               <div key={url} className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.8)] mb-1">
                                     {selectedImage.name}
                                   </p>
-                                  <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.5)] mb-1">
-                                    {selectedImage.className || "クラス未設定"}
-                                  </p>
-                                  <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] text-[rgba(0,0,0,0.6)] leading-relaxed">
-                                    {selectedImage.comment}
-                                  </p>
+                                  {selectedImage.className && (
+                                    <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.5)] mb-1">
+                                      {selectedImage.className}
+                                    </p>
+                                  )}
+                                  {selectedImage.comment && (
+                                    <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] text-[rgba(0,0,0,0.6)] leading-relaxed">
+                                      {selectedImage.comment}
+                                    </p>
+                                  )}
+                                  {!selectedImage.className && !selectedImage.comment && (
+                                    <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[12px] text-[rgba(0,0,0,0.5)]">
+                                      下書きに保存されている画像です
+                                    </p>
+                                  )}
                                 </div>
                                 <button
                                   type="button"
@@ -1202,15 +1299,11 @@ export default function PostArticle() {
                   <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[14px] text-[rgba(0,0,0,0.75)]">
                     {activityType === "parent"
                       ? "親活動として設定中"
-                      : activityType === "child"
-                        ? "子活動として設定中"
-                        : "親子活動の設定なし"}
+                      : "小活動として設定中"}
                   </p>
                   {activityType === "parent" && (
                     <p className="mt-2 font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] leading-relaxed text-[rgba(0,0,0,0.56)]">
-                      {selectedChildArticles.length > 0
-                        ? `${selectedChildArticles.length}件の子活動を紐付けています`
-                        : "まだ子活動は選択されていません"}
+                      親活動を先に作成し、この詳細ページから小活動を追加してください。
                     </p>
                   )}
                   {activityType === "child" && (
@@ -1349,15 +1442,25 @@ export default function PostArticle() {
               </div>
 
               {/* 投稿ボタン */}
-              <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className={`mt-6 grid grid-cols-1 gap-3 ${isAdmin ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                 <button
                   type="button"
                   disabled={isSubmitting}
-                  onClick={() => void handleSaveArticle("draft")}
+                  onClick={() => void handleSaveArticle("private_draft")}
                   className="rounded-xl border-2 border-[rgba(0,0,0,0.12)] bg-white py-4 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.72)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting && submitMode === "draft" ? "保存中..." : "下書きを保存"}
+                  {isSubmitting && submitMode === "private_draft" ? "保存中..." : "下書きを保存"}
                 </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => void handleSaveArticle("pending")}
+                    className="rounded-xl border-2 border-[rgba(0,0,0,0.12)] bg-[rgba(255,250,240,0.9)] py-4 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.72)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting && submitMode === "pending" ? "保存中..." : "未承認で保存"}
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -1372,14 +1475,25 @@ export default function PostArticle() {
                         ? "公開内容を更新"
                         : "公開して登録"
                       : isEditMode
-                        ? "非公開記事を更新"
-                        : "非公開記事を登録"}
+                        ? "未承認として更新"
+                        : "未承認として登録"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={isLogoutDialogOpen}
+        title="ログアウトしますか？"
+        description="ログアウトすると、教員向けの操作メニューは閉じられます。"
+        confirmLabel="ログアウト"
+        onCancel={() => setIsLogoutDialogOpen(false)}
+        onConfirm={() => {
+          void handleLogout();
+        }}
+      />
 
       {/* SDGs モーダル */}
       <ModalShell
@@ -1451,27 +1565,7 @@ export default function PostArticle() {
               </button>
             </div>
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-140px)] space-y-6">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActivityType("none");
-                    setParentActivityId(null);
-                    setChildActivityIds([]);
-                  }}
-                  className={`rounded-xl border-2 px-4 py-4 text-left transition-all duration-200 ${
-                    activityType === "none"
-                      ? "border-[rgba(255,209,131,0.93)] bg-[rgba(255,248,230,0.9)] shadow-md"
-                      : "border-[rgba(0,0,0,0.08)] bg-white hover:border-[rgba(255,209,131,0.5)]"
-                  }`}
-                >
-                  <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.78)]">
-                    設定しない
-                  </p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-[rgba(0,0,0,0.55)]">
-                    親活動・子活動の紐付けを使わない
-                  </p>
-                </button>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -1488,14 +1582,16 @@ export default function PostArticle() {
                     親活動
                   </p>
                   <p className="mt-2 text-[13px] leading-relaxed text-[rgba(0,0,0,0.55)]">
-                    この記事に子活動を複数紐付ける
+                    まず親活動を作成し、詳細画面から小活動を追加します
                   </p>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setActivityType("child");
-                    setChildActivityIds([]);
+                    if (Number.isFinite(preselectedParentActivityId) && preselectedParentActivityId > 0) {
+                      setParentActivityId(preselectedParentActivityId);
+                    }
                   }}
                   className={`rounded-xl border-2 px-4 py-4 text-left transition-all duration-200 ${
                     activityType === "child"
@@ -1504,10 +1600,10 @@ export default function PostArticle() {
                   }`}
                 >
                   <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.78)]">
-                    子活動
+                    小活動
                   </p>
                   <p className="mt-2 text-[13px] leading-relaxed text-[rgba(0,0,0,0.55)]">
-                    この記事を親活動に紐付ける
+                    親活動の詳細画面から作成する想定です
                   </p>
                 </button>
               </div>
@@ -1515,41 +1611,10 @@ export default function PostArticle() {
               {activityType === "parent" && (
                 <div className="space-y-3">
                   <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.74)]">
-                    子活動として紐付ける記事
+                    親活動の作成について
                   </p>
-                  {availableActivityArticles.length === 0 && (
-                    <div className="rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-8 text-center text-[14px] text-[rgba(0,0,0,0.5)]">
-                      紐付けできる記事がありません
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 gap-3">
-                    {availableActivityArticles.map((activityArticle) => {
-                      const isSelected = childActivityIds.includes(activityArticle.id);
-                      return (
-                        <button
-                          key={activityArticle.id}
-                          type="button"
-                          onClick={() => toggleChildActivity(activityArticle.id)}
-                          className={`rounded-xl border-2 px-4 py-4 text-left transition-all duration-200 ${
-                            isSelected
-                              ? "border-[rgba(255,209,131,0.93)] bg-[rgba(255,248,230,0.9)] shadow-md"
-                              : "border-[rgba(0,0,0,0.08)] bg-white hover:border-[rgba(255,209,131,0.5)]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.8)]">
-                                {activityArticle.title || "無題の記事"}
-                              </p>
-                              <p className="mt-2 text-[13px] text-[rgba(0,0,0,0.55)]">
-                                {activityArticle.grade || "学年未設定"} / {activityArticle.date || "日付未設定"}
-                              </p>
-                            </div>
-                            {isSelected && <Check size={18} className="text-[rgba(0,0,0,0.72)]" />}
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-5 text-[14px] leading-relaxed text-[rgba(0,0,0,0.6)]">
+                    親活動を保存したあと、記事詳細画面に表示される「小活動を作成」ボタンから、この親活動に紐付く小活動を追加できます。
                   </div>
                 </div>
               )}
@@ -1557,11 +1622,11 @@ export default function PostArticle() {
               {activityType === "child" && (
                 <div className="space-y-3">
                   <p className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.74)]">
-                    親活動として紐付ける記事
+                    紐付ける親活動を選択
                   </p>
                   {availableActivityArticles.length === 0 && (
                     <div className="rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-8 text-center text-[14px] text-[rgba(0,0,0,0.5)]">
-                      紐付けできる記事がありません
+                      紐付けできる親活動がありません
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-3">

@@ -428,7 +428,7 @@ function rowToArticle(
     isParentActivity: Boolean(row.has_child_activities),
     title: row.title || '',
     content: row.content || '',
-    status: row.status || 'published',
+    status: normalizeArticleStatus(row.status, 'published'),
     sdgs: sdgs || parseJsonArray(row.sdgs),
     sdgItems: sdgItems || [],
     category: categories.length ? categories.join(' / ') : (row.category || ''),
@@ -462,6 +462,29 @@ function normalizeNumericList(values) {
 function normalizeOptionalNumericValue(value) {
   const normalized = Number(value);
   return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+}
+
+function normalizeArticleStatus(status, fallback = 'pending') {
+  if (status === 'private_draft' || status === 'pending' || status === 'published' || status === 'archived') {
+    return status;
+  }
+
+  if (status === 'draft') {
+    return 'pending';
+  }
+
+  return fallback;
+}
+
+function serializeArticleStatusForStorage(status) {
+  const normalized = normalizeArticleStatus(status, 'pending');
+
+  // DB schema compatibility: old environments still persist "pending" as "draft".
+  if (normalized === 'pending') {
+    return 'draft';
+  }
+
+  return normalized;
 }
 
 function parseDataUrl(dataUrl) {
@@ -624,7 +647,7 @@ async function ensureActivityBelongsToSchool(connection, { activityId, schoolDbI
 }
 
 export async function listArticlesBySchoolId(schoolId, options = {}) {
-  const includeDrafts = Boolean(options.includeDrafts);
+  const viewerUserId = Number(options.viewerUserId || 0);
   const [rows] = await pool.execute(
     /* language=MySQL */
     `SELECT
@@ -660,19 +683,22 @@ export async function listArticlesBySchoolId(schoolId, options = {}) {
     INNER JOIN schools s ON s.id = a.school_id
     WHERE s.slug = ?
       AND a.deleted_at IS NULL
-      AND (${includeDrafts ? 'a.status IN (\'published\', \'draft\')' : 'a.status = \'published\''})
+      AND (
+        a.status IN ('published', 'pending', 'draft')
+        OR (a.status = 'private_draft' AND a.author_user_id = ?)
+      )
     ORDER BY COALESCE(
       a.activity_date,
       STR_TO_DATE(CONCAT(a.activited_at, '-01'), '%Y-%m-%d'),
       DATE(a.created_at)
     ) DESC, a.id DESC`,
-    [schoolId]
+    [schoolId, viewerUserId]
   );
 
   return hydrateArticles(rows);
 }
 
-export async function getArticleById({ schoolId, articleId, includeDraftRelations = false }) {
+export async function getArticleById({ schoolId, articleId, includeDraftRelations = false, viewerUserId = 0 }) {
   const [rows] = await pool.execute(
     /* language=MySQL */
     `SELECT
@@ -753,20 +779,36 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
     WHERE s.slug = ?
       AND a.parent_id = ?
       AND a.deleted_at IS NULL
-      AND (${includeDraftRelations ? 'a.status IN (\'published\', \'draft\')' : 'a.status = \'published\''})
+      AND (
+        a.status IN ('published', 'pending', 'draft')
+        OR (${includeDraftRelations ? 'a.status = \'private_draft\' AND a.author_user_id = ?' : 'FALSE'})
+      )
     ORDER BY COALESCE(
       a.activity_date,
       STR_TO_DATE(CONCAT(a.activited_at, '-01'), '%Y-%m-%d'),
       DATE(a.created_at)
     ) DESC, a.id DESC`,
-    [schoolId, articleId]
+    includeDraftRelations ? [schoolId, articleId, Number(viewerUserId || 0)] : [schoolId, articleId]
   );
 
   const childArticles = await hydrateArticles(childRows);
   let parentArticle = null;
   if (row.parent_id != null) {
     const [parent] = await hydrateArticleRowsByIds([Number(row.parent_id)]);
-    parentArticle = parent || null;
+    if (
+      parent &&
+      (
+        parent.status === 'published' ||
+        parent.status === 'pending' ||
+        (
+          includeDraftRelations &&
+          parent.status === 'private_draft' &&
+          parent.authorUserId === Number(viewerUserId || 0)
+        )
+      )
+    ) {
+      parentArticle = parent;
+    }
   }
 
   return {
@@ -828,7 +870,8 @@ export async function createArticle({
     throw new Error('userId は必須です。');
   }
 
-  const normalizedStatus = status === 'draft' ? 'draft' : 'published';
+  const normalizedStatus = normalizeArticleStatus(status, 'pending');
+  const storageStatus = serializeArticleStatusForStorage(status);
 
   if (normalizedStatus === 'published' && !String(title || '').trim()) {
     throw new Error('タイトルは必須です。');
@@ -900,7 +943,7 @@ export async function createArticle({
         postingDateString,
         normalizedParentActivityId,
         normalizedStatus === 'published' ? 1 : 0,
-        normalizedStatus,
+        storageStatus,
         normalizedStatus === 'published' ? now : null,
       ]
     );
@@ -990,7 +1033,8 @@ export async function updateArticle({
   parentActivityId,
   childActivityIds,
 }) {
-  const normalizedStatus = status === 'draft' ? 'draft' : 'published';
+  const normalizedStatus = normalizeArticleStatus(status, 'pending');
+  const storageStatus = serializeArticleStatusForStorage(status);
 
   if (normalizedStatus === 'published' && !String(title || '').trim()) {
     throw new Error('タイトルは必須です。');
@@ -1060,7 +1104,7 @@ export async function updateArticle({
         String(content || '').trim(),
         normalizedParentActivityId,
         normalizedStatus === 'published' ? 1 : 0,
-        normalizedStatus,
+        storageStatus,
         normalizedStatus === 'published' ? now : null,
         articleId,
       ]
