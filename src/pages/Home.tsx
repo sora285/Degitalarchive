@@ -646,13 +646,36 @@ export default function Home() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
 
+  const loadArticles = async (targetSchoolId: string) => {
+    setIsLoading(true);
+    setNotice("");
+
+    try {
+      const list = await fetchArticles(targetSchoolId);
+      setArticles(list.length > 0 ? list : fallbackArticles);
+      if (list.length === 0) {
+        setNotice("DBに記事がないため、サンプル記事を表示しています。");
+      }
+    } catch {
+      setArticles(fallbackArticles);
+      setNotice("記事取得に失敗したため、サンプル記事を表示しています。");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     setIsLogoutDialogOpen(false);
     if (schoolId) {
       localStorage.setItem("currentSchoolId", schoolId);
     }
     await logoutCurrentUser();
-    navigate(`/schools/${schoolId}/home`);
+    setIsPendingListOpen(false);
+
+    if (schoolId) {
+      await loadArticles(schoolId);
+      navigate(`/schools/${schoolId}/home`, { replace: true });
+    }
   };
 
   const splitValues = (value?: string) =>
@@ -713,27 +736,27 @@ export default function Home() {
     }
 
     let mounted = true;
-    setIsLoading(true);
-    setNotice("");
+    void (async () => {
+      setIsLoading(true);
+      setNotice("");
 
-    fetchArticles(schoolId)
-      .then((list) => {
+      try {
+        const list = await fetchArticles(schoolId);
         if (!mounted) return;
         setArticles(list.length > 0 ? list : fallbackArticles);
         if (list.length === 0) {
           setNotice("DBに記事がないため、サンプル記事を表示しています。");
         }
-      })
-      .catch(() => {
+      } catch {
         if (!mounted) return;
         setArticles(fallbackArticles);
         setNotice("記事取得に失敗したため、サンプル記事を表示しています。");
-      })
-      .finally(() => {
+      } finally {
         if (mounted) {
           setIsLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       mounted = false;

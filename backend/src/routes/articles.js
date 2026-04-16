@@ -24,11 +24,15 @@ function canReadArticle(req, schoolId, article) {
     return Boolean(
       req.auth &&
       req.auth.schoolId === schoolId &&
-      (req.auth.userId === article.authorUserId || req.auth.role === 'admin')
+      req.auth.userId === article.authorUserId
     );
   }
 
-  return article.status === 'published' || article.status === 'pending';
+  if (article.status === 'pending') {
+    return isStaffOfSchool(req, schoolId);
+  }
+
+  return article.status === 'published';
 }
 
 router.get('/', async (req, res, next) => {
@@ -40,6 +44,7 @@ router.get('/', async (req, res, next) => {
 
     const articles = await listArticlesBySchoolId(schoolId, {
       viewerUserId: isStaffOfSchool(req, schoolId) ? req.auth?.userId : 0,
+      canViewPending: isStaffOfSchool(req, schoolId),
     });
     return res.status(200).json({ articles });
   } catch (error) {
@@ -66,6 +71,7 @@ router.get('/:id', async (req, res, next) => {
       articleId,
       includeDraftRelations,
       viewerUserId: includeDraftRelations ? req.auth?.userId : 0,
+      canViewPending: includeDraftRelations,
     });
     if (!article) {
       return res.status(404).json({ message: '記事が見つかりません。' });
@@ -99,6 +105,7 @@ router.get('/:id/image', async (req, res, next) => {
       articleId,
       includeDraftRelations: isStaffOfSchool(req, schoolId),
       viewerUserId: isStaffOfSchool(req, schoolId) ? req.auth?.userId : 0,
+      canViewPending: isStaffOfSchool(req, schoolId),
     });
     if (!article) {
       return res.status(404).json({ message: '記事が見つかりません。' });
@@ -176,6 +183,7 @@ router.put('/:id', requireAuthenticated, async (req, res, next) => {
       schoolId,
       articleId,
       includeDraftRelations: true,
+      canViewPending: true,
     });
     if (!existingArticle) {
       return res.status(404).json({ message: '記事が見つかりません。' });
@@ -240,6 +248,7 @@ router.delete('/:id', requireAuthenticated, async (req, res, next) => {
       articleId,
       includeDraftRelations: true,
       viewerUserId: req.auth?.userId || 0,
+      canViewPending: true,
     });
     if (!existingArticle) {
       return res.status(404).json({ message: '記事が見つかりません。' });

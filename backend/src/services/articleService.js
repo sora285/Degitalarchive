@@ -648,6 +648,7 @@ async function ensureActivityBelongsToSchool(connection, { activityId, schoolDbI
 
 export async function listArticlesBySchoolId(schoolId, options = {}) {
   const viewerUserId = Number(options.viewerUserId || 0);
+  const canViewPending = Boolean(options.canViewPending);
   const [rows] = await pool.execute(
     /* language=MySQL */
     `SELECT
@@ -684,7 +685,8 @@ export async function listArticlesBySchoolId(schoolId, options = {}) {
     WHERE s.slug = ?
       AND a.deleted_at IS NULL
       AND (
-        a.status IN ('published', 'pending', 'draft')
+        a.status = 'published'
+        OR (? AND a.status IN ('pending', 'draft'))
         OR (a.status = 'private_draft' AND a.author_user_id = ?)
       )
     ORDER BY COALESCE(
@@ -692,13 +694,19 @@ export async function listArticlesBySchoolId(schoolId, options = {}) {
       STR_TO_DATE(CONCAT(a.activited_at, '-01'), '%Y-%m-%d'),
       DATE(a.created_at)
     ) DESC, a.id DESC`,
-    [schoolId, viewerUserId]
+    [schoolId, canViewPending ? 1 : 0, viewerUserId]
   );
 
   return hydrateArticles(rows);
 }
 
-export async function getArticleById({ schoolId, articleId, includeDraftRelations = false, viewerUserId = 0 }) {
+export async function getArticleById({
+  schoolId,
+  articleId,
+  includeDraftRelations = false,
+  viewerUserId = 0,
+  canViewPending = false,
+}) {
   const [rows] = await pool.execute(
     /* language=MySQL */
     `SELECT
@@ -780,7 +788,8 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
       AND a.parent_id = ?
       AND a.deleted_at IS NULL
       AND (
-        a.status IN ('published', 'pending', 'draft')
+        a.status = 'published'
+        OR (? AND a.status IN ('pending', 'draft'))
         OR (${includeDraftRelations ? 'a.status = \'private_draft\' AND a.author_user_id = ?' : 'FALSE'})
       )
     ORDER BY COALESCE(
@@ -788,7 +797,9 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
       STR_TO_DATE(CONCAT(a.activited_at, '-01'), '%Y-%m-%d'),
       DATE(a.created_at)
     ) DESC, a.id DESC`,
-    includeDraftRelations ? [schoolId, articleId, Number(viewerUserId || 0)] : [schoolId, articleId]
+    includeDraftRelations
+      ? [schoolId, articleId, canViewPending ? 1 : 0, Number(viewerUserId || 0)]
+      : [schoolId, articleId, canViewPending ? 1 : 0]
   );
 
   const childArticles = await hydrateArticles(childRows);
@@ -799,7 +810,7 @@ export async function getArticleById({ schoolId, articleId, includeDraftRelation
       parent &&
       (
         parent.status === 'published' ||
-        parent.status === 'pending' ||
+        (canViewPending && parent.status === 'pending') ||
         (
           includeDraftRelations &&
           parent.status === 'private_draft' &&
@@ -1005,6 +1016,7 @@ export async function createArticle({
       schoolId,
       articleId: Number(activityId),
       includeDraftRelations: true,
+      canViewPending: true,
     });
   } catch (error) {
     await connection.rollback();
@@ -1175,7 +1187,7 @@ export async function updateArticle({
     }
 
     await connection.commit();
-    return await getArticleById({ schoolId, articleId, includeDraftRelations: true });
+    return await getArticleById({ schoolId, articleId, includeDraftRelations: true, canViewPending: true });
   } catch (error) {
     await connection.rollback();
     throw error;
