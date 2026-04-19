@@ -1063,7 +1063,12 @@ export async function updateArticle({
 
     const [rows] = await connection.execute(
       /* language=MySQL */
-      `SELECT a.id, s.id AS school_db_id
+      `SELECT
+         a.id,
+         a.user_id,
+         a.author_user_id,
+         a.parent_id,
+         s.id AS school_db_id
        FROM activities a
        INNER JOIN schools s ON s.id = a.school_id
        WHERE a.id = ? AND s.slug = ? AND a.deleted_at IS NULL
@@ -1077,6 +1082,8 @@ export async function updateArticle({
     }
 
     const schoolDbId = rows[0].school_db_id;
+    const preservedUserId = rows[0].author_user_id ?? rows[0].user_id ?? userId;
+    const isParentActivity = rows[0].parent_id == null;
 
     if (normalizedParentActivityId != null) {
       normalizedParentActivityId = await ensureActivityBelongsToSchool(connection, {
@@ -1106,8 +1113,8 @@ export async function updateArticle({
            updated_at = NOW()
        WHERE id = ?`,
       [
-        String(userId),
-        userId,
+        String(preservedUserId),
+        preservedUserId,
         latitude === '' || latitude == null ? null : Number(latitude),
         longitude === '' || longitude == null ? null : Number(longitude),
         locationName || null,
@@ -1121,6 +1128,23 @@ export async function updateArticle({
         articleId,
       ]
     );
+
+    if (isParentActivity && normalizedStatus !== 'published') {
+      const cascadedStatus = 'draft';
+      await connection.execute(
+        /* language=MySQL */
+        `UPDATE activities
+         SET is_public = 0,
+             status = ?,
+             published_at = NULL,
+             updated_at = NOW()
+         WHERE school_id = ?
+           AND deleted_at IS NULL
+           AND parent_id = ?
+           AND status IN ('published')`,
+        [cascadedStatus, schoolDbId, articleId]
+      );
+    }
 
     await connection.execute(/* language=MySQL */ 'DELETE FROM activity_images WHERE activity_id = ?', [articleId]);
     await connection.execute(/* language=MySQL */ 'DELETE FROM activity_categories WHERE activity_id = ?', [articleId]);

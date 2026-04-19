@@ -191,14 +191,15 @@ router.put('/:id', requireAuthenticated, async (req, res, next) => {
 
     const isAdmin = req.auth?.role === 'admin';
     const isOwner = existingArticle.authorUserId === req.auth?.userId;
+    const isParentActivity = !existingArticle.parentActivityId;
 
     if (!isAdmin) {
       if (!isOwner) {
         return res.status(403).json({ message: '自分が作成した記事のみ編集できます。' });
       }
 
-      if (existingArticle.status === 'published') {
-        return res.status(403).json({ message: '一般教員は公開済みの記事を編集できません。' });
+      if (existingArticle.status === 'published' && !isParentActivity) {
+        return res.status(403).json({ message: '一般教員は公開済みの小活動を編集できません。' });
       }
     }
 

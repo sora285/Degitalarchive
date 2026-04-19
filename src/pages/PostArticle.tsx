@@ -334,7 +334,6 @@ export default function PostArticle() {
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser(schoolId);
   const isAdmin = currentUser?.role === "admin";
-  const canEditPublishedArticle = isAdmin;
   const canUsePostEditor = Boolean(currentUser);
   const editingArticleId = Number(searchParams.get("articleId") || 0);
   const preselectedParentActivityId = Number(searchParams.get("parentActivityId") || 0);
@@ -379,6 +378,7 @@ export default function PostArticle() {
   const [pageError, setPageError] = useState("");
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+  const [editingArticleStatus, setEditingArticleStatus] = useState<ArticleData["status"] | null>(null);
   const [draftArticles, setDraftArticles] = useState<ArticleData[]>([]);
   const [isDraftListOpen, setIsDraftListOpen] = useState(false);
   const [activityArticles, setActivityArticles] = useState<ArticleData[]>([]);
@@ -412,6 +412,10 @@ export default function PostArticle() {
   ];
 
   const primarySubmitStatus: "pending" | "published" = isAdmin ? "published" : "pending";
+  const canReturnPendingToDraft =
+    currentUser?.role === "user" &&
+    isEditMode &&
+    editingArticleStatus === "pending";
 
   useEffect(() => {
     if (!schoolId) {
@@ -568,10 +572,13 @@ export default function PostArticle() {
     fetchArticleById(schoolId, editingArticleId)
       .then((article) => {
         if (!mounted) return;
+        const isParentActivity = !article.parentActivityId;
+        const canEditPublishedArticle = isAdmin || (currentUser?.role === "user" && article.authorUserId === currentUser.id && isParentActivity);
         if (!canEditPublishedArticle && article.status === "published") {
-          setPageError("一般教員は公開済みの記事を編集できません。");
+          setPageError("一般教員は公開済みの小活動を編集できません。");
           return;
         }
+        setEditingArticleStatus(article.status || null);
         setTitle(article.title || "");
         setContent(article.content || "");
         setClassInfo(article.grade || "");
@@ -591,6 +598,7 @@ export default function PostArticle() {
       })
       .catch((error) => {
         if (!mounted) return;
+        setEditingArticleStatus(null);
         setPageError(error instanceof Error ? error.message : "記事の取得に失敗しました。");
       })
       .finally(() => {
@@ -602,7 +610,7 @@ export default function PostArticle() {
     return () => {
       mounted = false;
     };
-  }, [schoolId, editingArticleId, isEditMode, canUsePostEditor, canEditPublishedArticle]);
+  }, [schoolId, editingArticleId, isEditMode, canUsePostEditor, isAdmin, currentUser]);
 
   useEffect(() => {
     if (!schoolId) {
@@ -1449,7 +1457,11 @@ export default function PostArticle() {
                   onClick={() => void handleSaveArticle("private_draft")}
                   className="rounded-xl border-2 border-[rgba(0,0,0,0.12)] bg-white py-4 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.72)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting && submitMode === "private_draft" ? "保存中..." : "下書きを保存"}
+                  {isSubmitting && submitMode === "private_draft"
+                    ? "保存中..."
+                    : canReturnPendingToDraft
+                      ? "下書きに戻す"
+                      : "下書きを保存"}
                 </button>
                 {isAdmin && (
                   <button

@@ -217,13 +217,14 @@ export default function ArticleDetail() {
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const isOwner = Boolean(article && currentUser?.id === article.authorUserId);
+  const isParentActivity = Boolean(article) && !article?.parentActivityId;
   const canCreateChildActivity = Boolean(currentUser) && Boolean(article) && !article?.parentActivityId;
   const canEditArticle =
     Boolean(article) &&
     (
       isAdmin ||
       (currentUser?.role === "user" &&
-        article?.status !== "published" &&
+        (article?.status !== "published" || isParentActivity) &&
         article?.authorUserId === currentUser?.id)
     );
   const canMoveToDraft = Boolean(article) && (isAdmin || canEditArticle) && article?.status !== "private_draft";
