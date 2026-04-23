@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 type ModalShellProps = {
@@ -10,7 +11,12 @@ type ModalShellProps = {
   footer?: ReactNode;
   maxWidthClassName?: string;
   zIndexClassName?: string;
+  zIndex?: number;
   closeDisabled?: boolean;
+  panelClassName?: string;
+  headerClassName?: string;
+  bodyClassName?: string;
+  footerClassName?: string;
 };
 
 export default function ModalShell({
@@ -22,13 +28,19 @@ export default function ModalShell({
   footer,
   maxWidthClassName = "max-w-2xl",
   zIndexClassName = "z-[100]",
+  zIndex,
   closeDisabled = false,
+  panelClassName = "",
+  headerClassName = "",
+  bodyClassName = "",
+  footerClassName = "",
 }: ModalShellProps) {
   if (!open) return null;
 
-  return (
+  const modalContent = (
     <div
       className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-[rgba(15,23,42,0.28)] p-4 backdrop-blur-[3px]`}
+      style={zIndex != null ? { zIndex } : undefined}
       onClick={() => {
         if (!closeDisabled) {
           onClose();
@@ -36,10 +48,10 @@ export default function ModalShell({
       }}
     >
       <div
-        className={`w-full ${maxWidthClassName} overflow-hidden rounded-[28px] border border-[rgba(0,0,0,0.08)] bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)]`}
+        className={`w-full ${maxWidthClassName} overflow-hidden rounded-[28px] border border-[rgba(0,0,0,0.08)] bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)] ${panelClassName}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="relative px-6 pb-5 pt-6">
+        <div className={`relative px-6 pb-5 pt-6 ${headerClassName}`}>
           <button
             type="button"
             onClick={onClose}
@@ -59,9 +71,15 @@ export default function ModalShell({
             )}
           </div>
         </div>
-        <div className="max-h-[calc(80vh-180px)] overflow-y-auto px-6 pb-6">{children}</div>
-        {footer && <div className="border-t border-[rgba(0,0,0,0.08)] bg-[rgba(248,250,252,0.72)] px-6 py-4">{footer}</div>}
+        <div className={`max-h-[calc(80vh-180px)] overflow-y-auto px-6 pb-6 ${bodyClassName}`}>{children}</div>
+        {footer && <div className={`border-t border-[rgba(0,0,0,0.08)] bg-[rgba(248,250,252,0.72)] px-6 py-4 ${footerClassName}`}>{footer}</div>}
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 }

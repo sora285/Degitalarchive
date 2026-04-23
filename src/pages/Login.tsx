@@ -209,13 +209,6 @@ export default function Login() {
             >
               {isLoading ? "ログイン中..." : "ログイン"}
             </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/schools/${schoolId}/register`)}
-              className="border border-[rgba(0,0,0,0.15)] bg-white hover:bg-[rgba(255,209,131,0.1)] transition-all duration-200 rounded-xl py-3 font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)]"
-            >
-              テスト用アカウントを作成
-            </button>
           </form>
         </div>
       </div>

@@ -41,6 +41,7 @@ export interface CreateArticleInput {
   status: 'private_draft' | 'pending' | 'published';
   title: string;
   content: string;
+  date: string;
   grade: string;
   locationName: string;
   latitude: string;

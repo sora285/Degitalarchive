@@ -44,6 +44,24 @@ function formatFiscalYearLabel(fiscalYear) {
   return Number.isFinite(normalizedYear) ? `${normalizedYear}年度` : '';
 }
 
+function normalizeArticleDateInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return {
+    date,
+    activityDate: raw,
+    activeYearMonth: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+  };
+}
+
 function parseJsonArray(value) {
   if (!value) return [];
   try {
@@ -861,6 +879,7 @@ export async function createArticle({
   status,
   title,
   content,
+  date,
   grade,
   locationName,
   latitude,
@@ -899,9 +918,10 @@ export async function createArticle({
 
   const schoolRow = schoolRows[0];
   const now = new Date();
-  const postingDate = getPostingDateForFiscalYear(now);
-  const yearMonth = `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}`;
-  const postingDateString = `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}-${String(postingDate.getUTCDate()).padStart(2, '0')}`;
+  const selectedArticleDate = normalizeArticleDateInput(date);
+  const postingDate = selectedArticleDate?.date || getPostingDateForFiscalYear(now);
+  const yearMonth = selectedArticleDate?.activeYearMonth || `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}`;
+  const postingDateString = selectedArticleDate?.activityDate || `${postingDate.getUTCFullYear()}-${String(postingDate.getUTCMonth() + 1).padStart(2, '0')}-${String(postingDate.getUTCDate()).padStart(2, '0')}`;
   const uploadedImageUrls = await persistUploadedImages(uploadedImages);
   const imageUrls = [...libraryImageUrls, ...uploadedImageUrls].filter(Boolean);
   const uniqueImageUrls = [...new Set(imageUrls)];
@@ -1033,6 +1053,7 @@ export async function updateArticle({
   status,
   title,
   content,
+  date,
   grade,
   locationName,
   latitude,
@@ -1094,6 +1115,7 @@ export async function updateArticle({
     }
 
     const now = new Date();
+    const selectedArticleDate = normalizeArticleDateInput(date);
 
     await connection.execute(
       /* language=MySQL */
@@ -1106,6 +1128,8 @@ export async function updateArticle({
            grade = ?,
            name = ?,
            contents = ?,
+           activited_at = ?,
+           activity_date = ?,
            parent_id = ?,
            is_public = ?,
            status = ?,
@@ -1121,6 +1145,8 @@ export async function updateArticle({
         grade || null,
         String(title || '').trim(),
         String(content || '').trim(),
+        selectedArticleDate?.activeYearMonth || null,
+        selectedArticleDate?.activityDate || null,
         normalizedParentActivityId,
         normalizedStatus === 'published' ? 1 : 0,
         storageStatus,
@@ -1128,6 +1154,21 @@ export async function updateArticle({
         articleId,
       ]
     );
+
+    if (isParentActivity && normalizedStatus === 'published') {
+      await connection.execute(
+        /* language=MySQL */
+        `UPDATE activities
+         SET is_public = 1,
+             status = 'published',
+             published_at = COALESCE(published_at, ?),
+             updated_at = NOW()
+         WHERE school_id = ?
+           AND deleted_at IS NULL
+           AND parent_id = ?`,
+        [now, schoolDbId, articleId]
+      );
+    }
 
     if (isParentActivity && normalizedStatus !== 'published') {
       const cascadedStatus = 'draft';

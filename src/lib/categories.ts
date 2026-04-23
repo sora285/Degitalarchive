@@ -44,3 +44,12 @@ export async function createCategory(schoolId: string, label: string): Promise<C
   const data = await parseResponse<{ category: CategoryOption }>(response);
   return data.category;
 }
+
+export async function deleteCategory(schoolId: string, categoryId: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/categories/${encodeURIComponent(categoryId)}?schoolId=${encodeURIComponent(schoolId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+
+  await parseResponse<{}>(response);
+}

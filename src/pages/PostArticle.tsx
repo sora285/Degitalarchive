@@ -4,7 +4,7 @@ import { ArrowLeft, Upload, LogOut, MapPin, Search, Check, Plus, X, ChevronDown,
 import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { fetchClasses, type ClassOption } from "../lib/classes";
 import { fetchSchools } from "../lib/schools";
-import { createCategory, fetchCategories, type CategoryOption } from "../lib/categories";
+import { createCategory, deleteCategory, fetchCategories, type CategoryOption } from "../lib/categories";
 import { createCompany, deleteCompany, fetchCompanies, type CompanyOption } from "../lib/companies";
 import { fetchImageLibrary, type ImageLibraryItem } from "../lib/imageLibrary";
 import { ArticleData, createArticle, fetchArticleById, fetchArticles, updateArticle as updateArticleRequest } from "../lib/articles";
@@ -285,6 +285,21 @@ function LocationMap({
   );
 }
 
+function normalizeDateInputValue(value?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const parts = raw.split("/");
+  if (parts.length !== 3) {
+    return raw;
+  }
+
+  const [year, month, day] = parts;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
@@ -341,6 +356,8 @@ export default function PostArticle() {
   const [title, setTitle] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryOption | null>(null);
   const [categoryCustom, setCategoryCustom] = useState("");
   const [sdgs, setSdgs] = useState<string[]>([]);
   const [isSDGsOpen, setIsSDGsOpen] = useState(false);
@@ -355,6 +372,7 @@ export default function PostArticle() {
   const [companyToDelete, setCompanyToDelete] = useState<CompanyOption | null>(null);
   const [companyCustom, setCompanyCustom] = useState("");
   const [content, setContent] = useState("");
+  const [articleDate, setArticleDate] = useState("");
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imageMode, setImageMode] = useState<"upload" | "select">("upload");
@@ -382,6 +400,7 @@ export default function PostArticle() {
   const [draftArticles, setDraftArticles] = useState<ArticleData[]>([]);
   const [isDraftListOpen, setIsDraftListOpen] = useState(false);
   const [activityArticles, setActivityArticles] = useState<ArticleData[]>([]);
+  const [linkedChildActivityIds, setLinkedChildActivityIds] = useState<number[]>([]);
 
   // 親子活動関連のstate
   const [activityType, setActivityType] = useState<"parent" | "child">(
@@ -581,6 +600,7 @@ export default function PostArticle() {
         setEditingArticleStatus(article.status || null);
         setTitle(article.title || "");
         setContent(article.content || "");
+        setArticleDate(normalizeDateInputValue(article.date));
         setClassInfo(article.grade || "");
         setLocationName(article.location?.name || "");
         setLatitude(article.location?.lat ? String(article.location.lat) : "");
@@ -590,6 +610,7 @@ export default function PostArticle() {
         setCompanies((article.companyIds || []).map((id) => String(id)));
         setSelectedLibraryImages(article.imageUrls || []);
         setParentActivityId(article.parentActivityId ?? null);
+        setLinkedChildActivityIds(article.childActivityIds || []);
         setActivityType(
           article.parentActivityId
             ? "child"
@@ -782,6 +803,29 @@ export default function PostArticle() {
     }
   };
 
+  const handleDeleteCategory = async () => {
+    if (!schoolId) {
+      return;
+    }
+
+    if (!categoryToDelete) {
+      return;
+    }
+
+    setDeletingCategoryId(categoryToDelete.id);
+    try {
+      await deleteCategory(schoolId, categoryToDelete.id);
+      setCategoryOptions((prev) => prev.filter((item) => item.id !== categoryToDelete.id));
+      setCategories((prev) => prev.filter((item) => item !== categoryToDelete.id));
+      setCategoryToDelete(null);
+    } catch (error) {
+      console.error("カテゴリの削除に失敗しました:", error);
+      alert("カテゴリの削除に失敗しました。");
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  };
+
   const availableActivityArticles = activityArticles.filter(
     (article) => article.id !== editingArticleId && !article.parentActivityId
   );
@@ -825,6 +869,7 @@ export default function PostArticle() {
         status,
         title,
         content,
+        date: articleDate,
         grade: classInfo,
         locationName,
         latitude,
@@ -835,7 +880,7 @@ export default function PostArticle() {
         libraryImageUrls: selectedLibraryImages,
         uploadedImages: imagePreviews,
         parentActivityId: activityType === "child" ? parentActivityId : null,
-        childActivityIds: [],
+        childActivityIds: activityType === "parent" ? linkedChildActivityIds : [],
       };
 
       if (isEditMode) {
@@ -870,7 +915,6 @@ export default function PostArticle() {
   };
 
   const handleSearchResultClick = (result: typeof searchResults[0]) => {
-    setLocationName(result.display_name);
     setLatitude(result.lat);
     setLongitude(result.lon);
     setSearchQuery(result.display_name);
@@ -1416,6 +1460,19 @@ export default function PostArticle() {
                 )}
               </div>
 
+              <div className="flex flex-col gap-3">
+                <label htmlFor="article-date" className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)] ml-1">
+                  記事の日付
+                </label>
+                <input
+                  id="article-date"
+                  type="date"
+                  value={articleDate}
+                  onChange={(e) => setArticleDate(e.target.value)}
+                  className="bg-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl px-5 py-4 text-[16px] transition-all duration-200 focus:outline-none focus:border-[rgba(255,209,131,0.93)] focus:shadow-lg focus:shadow-[rgba(255,209,131,0.2)]"
+                />
+              </div>
+
               {/* 地図表示 */}
               <div className="flex flex-col gap-3">
                 <label className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[15px] text-[rgba(0,0,0,0.7)] ml-1">
@@ -1470,7 +1527,7 @@ export default function PostArticle() {
                     onClick={() => void handleSaveArticle("pending")}
                     className="rounded-xl border-2 border-[rgba(0,0,0,0.12)] bg-[rgba(255,250,240,0.9)] py-4 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[18px] text-[rgba(0,0,0,0.72)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {isSubmitting && submitMode === "pending" ? "保存中..." : "未承認で保存"}
+                    {isSubmitting && submitMode === "pending" ? "保存中..." : "この内容で公開承認を依頼"}
                   </button>
                 )}
                 <button
@@ -1486,9 +1543,7 @@ export default function PostArticle() {
                       ? isEditMode
                         ? "公開内容を更新"
                         : "公開して登録"
-                      : isEditMode
-                        ? "未承認として更新"
-                        : "未承認として登録"}
+                      : "この内容で公開承認を依頼"}
                 </button>
               </div>
             </form>
@@ -1770,22 +1825,33 @@ export default function PostArticle() {
                         : 'bg-gradient-to-br from-white to-[#fffdf7] border-[rgba(0,0,0,0.1)] hover:border-[rgba(255,209,131,0.93)]'
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(option.id)}
-                      className="flex items-start gap-2 text-left w-full"
-                    >
-                      <div className={`mt-1 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                        categories.includes(option.id)
-                          ? 'bg-white border-[rgba(0,0,0,0.3)]'
-                          : 'border-[rgba(0,0,0,0.3)]'
-                      }`}>
-                        {categories.includes(option.id) && <Check size={12} className="text-[rgba(0,0,0,0.7)]" />}
-                      </div>
-                      <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.7)] break-words">
-                        {option.label}
-                      </span>
-                    </button>
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(option.id)}
+                        className="flex items-start gap-2 text-left flex-1 min-w-0"
+                      >
+                        <div className={`mt-1 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                          categories.includes(option.id)
+                            ? 'bg-white border-[rgba(0,0,0,0.3)]'
+                            : 'border-[rgba(0,0,0,0.3)]'
+                        }`}>
+                          {categories.includes(option.id) && <Check size={12} className="text-[rgba(0,0,0,0.7)]" />}
+                        </div>
+                        <span className="font-['Inter:Medium','Noto_Sans_JP:Medium',sans-serif] font-medium text-[14px] text-[rgba(0,0,0,0.7)] break-words">
+                          {option.label}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryToDelete(option)}
+                        disabled={deletingCategoryId === option.id}
+                        className="shrink-0 rounded-lg p-2 text-[rgba(0,0,0,0.45)] hover:bg-white/60 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label={`${option.label} を削除`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2091,6 +2157,56 @@ export default function PostArticle() {
       )}
 
       <ModalShell
+        open={Boolean(categoryToDelete)}
+        title="カテゴリを削除"
+        onClose={() => {
+          if (!deletingCategoryId) {
+            setCategoryToDelete(null);
+          }
+        }}
+        maxWidthClassName="max-w-md"
+        zIndexClassName="z-[400]"
+        zIndex={1000}
+        panelClassName="rounded-2xl shadow-2xl"
+        headerClassName="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] pb-8"
+        bodyClassName="pt-12"
+        footerClassName="bg-gradient-to-br from-[#f9f9f9] to-white"
+        closeDisabled={Boolean(deletingCategoryId)}
+        footer={
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setCategoryToDelete(null)}
+              disabled={Boolean(deletingCategoryId)}
+              className="flex-1 rounded-xl border border-[rgba(0,0,0,0.12)] bg-white py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-[rgba(0,0,0,0.65)] transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteCategory}
+              disabled={Boolean(deletingCategoryId)}
+              className="flex-1 rounded-xl py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold shadow-md transition-all duration-200 hover:opacity-95 disabled:opacity-50"
+              style={{ backgroundColor: "#e06a63", border: "1px solid #c85b55", color: "#ffffff" }}
+            >
+              {deletingCategoryId ? "削除中..." : "削除する"}
+            </button>
+          </div>
+        }
+      >
+        {categoryToDelete && (
+          <div className="rounded-xl bg-gradient-to-br from-white to-[#fffdf7] px-4 py-4">
+            <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[15px] leading-[1.8] text-[rgba(0,0,0,0.72)]">
+              「{categoryToDelete.label}」をカテゴリ一覧から削除します。
+            </p>
+            <p className="mt-2 font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] leading-[1.7] text-[rgba(0,0,0,0.5)]">
+              この操作は取り消せません。選択済みの記事カテゴリからも外れます。
+            </p>
+          </div>
+        )}
+      </ModalShell>
+
+      <ModalShell
         open={Boolean(companyToDelete)}
         title="企業を削除"
         onClose={() => {
@@ -2099,7 +2215,12 @@ export default function PostArticle() {
           }
         }}
         maxWidthClassName="max-w-md"
-        zIndexClassName="z-[200]"
+        zIndexClassName="z-[400]"
+        zIndex={1000}
+        panelClassName="rounded-2xl shadow-2xl"
+        headerClassName="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] pb-8"
+        bodyClassName="pt-12"
+        footerClassName="bg-gradient-to-br from-[#f9f9f9] to-white"
         closeDisabled={Boolean(deletingCompanyId)}
         footer={
           <div className="flex gap-3">
@@ -2107,7 +2228,7 @@ export default function PostArticle() {
               type="button"
               onClick={() => setCompanyToDelete(null)}
               disabled={Boolean(deletingCompanyId)}
-              className="flex-1 rounded-[20px] border border-[rgba(0,0,0,0.12)] bg-white py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-[rgba(0,0,0,0.65)] transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] disabled:opacity-50"
+              className="flex-1 rounded-xl border border-[rgba(0,0,0,0.12)] bg-white py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-[rgba(0,0,0,0.65)] transition-all duration-200 hover:bg-[rgba(0,0,0,0.03)] disabled:opacity-50"
             >
               キャンセル
             </button>
@@ -2115,8 +2236,8 @@ export default function PostArticle() {
               type="button"
               onClick={handleDeleteCompany}
               disabled={Boolean(deletingCompanyId)}
-              className="flex-1 rounded-[20px] bg-[linear-gradient(90deg,#cf3f37_0%,#b92e2e_100%)] py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-white shadow-md transition-all duration-200 hover:opacity-95 disabled:opacity-50"
-              style={{ border: "1px solid #a52828" }}
+              className="flex-1 rounded-xl py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold shadow-md transition-all duration-200 hover:opacity-95 disabled:opacity-50"
+              style={{ backgroundColor: "#e06a63", border: "1px solid #c85b55", color: "#ffffff" }}
             >
               {deletingCompanyId ? "削除中..." : "削除する"}
             </button>
@@ -2124,13 +2245,13 @@ export default function PostArticle() {
         }
       >
         {companyToDelete && (
-          <div>
-              <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[15px] leading-[1.8] text-[rgba(0,0,0,0.72)]">
-                「{companyToDelete.label}」を企業一覧から削除します。
-              </p>
-              <p className="mt-2 font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] leading-[1.7] text-[rgba(0,0,0,0.5)]">
-                この操作は取り消せません。関連企業として選択済みの項目からも外れます。
-              </p>
+          <div className="rounded-xl bg-gradient-to-br from-white to-[#fffdf7] px-4 py-4">
+            <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[15px] leading-[1.8] text-[rgba(0,0,0,0.72)]">
+              「{companyToDelete.label}」を企業一覧から削除します。
+            </p>
+            <p className="mt-2 font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] text-[13px] leading-[1.7] text-[rgba(0,0,0,0.5)]">
+              この操作は取り消せません。関連企業として選択済みの項目からも外れます。
+            </p>
           </div>
         )}
       </ModalShell>

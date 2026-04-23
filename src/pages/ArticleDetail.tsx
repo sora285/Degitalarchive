@@ -49,6 +49,21 @@ function getSdgColor(sdgText: string) {
   return colors[num] || "#4C9F38";
 }
 
+function normalizeDateInputValue(value?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const parts = raw.split("/");
+  if (parts.length !== 3) {
+    return raw;
+  }
+
+  const [year, month, day] = parts;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 function buildMapEmbedUrl(article: ArticleData) {
   const hasCoordinates =
     Number.isFinite(article.location?.lat) &&
@@ -67,10 +82,36 @@ function buildMapEmbedUrl(article: ArticleData) {
   return "";
 }
 
-function Header({ onLogoutClick }: { onLogoutClick: () => void }) {
+function Header({ onLogoutClick, mobile = false }: { onLogoutClick: () => void; mobile?: boolean }) {
   const navigate = useNavigate();
   const { schoolId } = useParams<{ schoolId: string }>();
   const currentUser = getCurrentUser(schoolId);
+
+  if (mobile) {
+    return (
+      <header
+        className="fixed top-0 left-0 right-0 z-50 h-[76px] border-b border-[rgba(154,52,18,0.24)] px-4 py-4 shadow-[0_8px_22px_rgba(194,65,12,0.18)]"
+        style={{ background: "linear-gradient(90deg, rgba(255,209,131,0.98), rgba(255,220,150,0.98))" }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[18px] font-semibold text-[rgba(0,0,0,0.82)]">デジタルアーカイブ</p>
+            <p className="text-[12px] text-[rgba(0,0,0,0.58)]">記事詳細</p>
+          </div>
+          {currentUser && (
+            <button
+              type="button"
+              onClick={onLogoutClick}
+              className="rounded-full border border-[rgba(255,255,255,0.28)] px-3 py-2 text-[12px] font-semibold text-[rgba(0,0,0,0.76)]"
+              style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+            >
+              <LogOut size={14} className="inline-block" /> ログアウト
+            </button>
+          )}
+        </div>
+      </header>
+    );
+  }
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 shadow-md" data-name="header">
@@ -203,7 +244,7 @@ function RelatedArticleCard({
   );
 }
 
-export default function ArticleDetail() {
+export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) {
   const { id, schoolId } = useParams<{ id: string; schoolId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -216,6 +257,7 @@ export default function ArticleDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+  const [pendingStatusConfirmation, setPendingStatusConfirmation] = useState<"private_draft" | "pending" | "published" | null>(null);
   const isOwner = Boolean(article && currentUser?.id === article.authorUserId);
   const isParentActivity = Boolean(article) && !article?.parentActivityId;
   const canCreateChildActivity = Boolean(currentUser) && Boolean(article) && !article?.parentActivityId;
@@ -238,14 +280,15 @@ export default function ArticleDetail() {
       : "bg-[rgba(34,197,94,0.12)] text-[rgba(22,101,52,0.92)] border-[rgba(34,197,94,0.22)]";
 
   const from = searchParams.get("from") || location.state?.from;
+  const routeBase = mobile ? "/mobile/schools" : "/schools";
   const articleImageSrc =
     schoolId && id
       ? `${API_BASE_URL}/api/articles/${id}/image?schoolId=${encodeURIComponent(schoolId)}`
       : (article?.imageUrl || FIXED_ARTICLE_IMAGE);
   const backDestination =
     from === "map"
-      ? `/schools/${schoolId}/map`
-      : `/schools/${schoolId}/home`;
+      ? `${routeBase}/${schoolId}/map`
+      : `${routeBase}/${schoolId}/home`;
   const backLabel = from === "map" ? "地図に戻る" : "一覧に戻る";
   const mapEmbedUrl = article ? buildMapEmbedUrl(article) : "";
 
@@ -293,7 +336,7 @@ export default function ArticleDetail() {
       localStorage.setItem("currentSchoolId", schoolId);
     }
     await logoutCurrentUser();
-    navigate(`/schools/${schoolId}/home`);
+    navigate(`${routeBase}/${schoolId}/home`);
   };
 
   const handleStatusUpdate = async (nextStatus: "private_draft" | "pending" | "published") => {
@@ -309,6 +352,7 @@ export default function ArticleDetail() {
         status: nextStatus,
         title: article.title,
         content: article.content,
+        date: normalizeDateInputValue(article.date),
         grade: article.grade || "",
         locationName: article.location?.name || "",
         latitude: article.location?.lat ? String(article.location.lat) : "",
@@ -329,12 +373,30 @@ export default function ArticleDetail() {
     }
   };
 
-  return (
-    <div className="bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen pt-20" data-name="article-detail">
-      <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} />
+  const requestStatusUpdate = (nextStatus: "private_draft" | "pending" | "published") => {
+    const shouldConfirmPublishWithChildren =
+      nextStatus === "published" &&
+      Boolean(article) &&
+      !article?.parentActivityId &&
+      Boolean(article?.childArticles?.length);
 
-      <div className="max-w-7xl mx-auto px-8 py-12">
-        <div className="mb-8 flex items-center justify-between gap-4">
+    if (shouldConfirmPublishWithChildren) {
+      setPendingStatusConfirmation(nextStatus);
+      return;
+    }
+
+    void handleStatusUpdate(nextStatus);
+  };
+
+  return (
+    <div
+      className={`bg-gradient-to-br from-white to-[#fffaf0] relative size-full min-h-screen ${mobile ? "pt-[92px] pb-28" : "pt-20"}`}
+      data-name="article-detail"
+    >
+      <Header onLogoutClick={() => setIsLogoutDialogOpen(true)} mobile={mobile} />
+
+      <div className={`max-w-7xl mx-auto ${mobile ? "px-4 py-6" : "px-8 py-12"}`}>
+        <div className={`mb-8 flex gap-4 ${mobile ? "flex-col items-stretch" : "items-center justify-between"}`}>
           <button
             onClick={() => navigate(backDestination)}
             className="flex items-center gap-2 bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)]"
@@ -344,7 +406,7 @@ export default function ArticleDetail() {
           </button>
           {canCreateChildActivity && article && !isLoading && !error && (
             <button
-              onClick={() => navigate(`/schools/${schoolId}/post?parentActivityId=${article.id}`)}
+              onClick={() => navigate(`${routeBase}/${schoolId}/post?parentActivityId=${article.id}`)}
               className="bg-gradient-to-r from-[rgba(255,209,131,0.93)] to-[rgba(255,220,150,0.93)] hover:from-[rgba(255,209,131,1)] hover:to-[rgba(255,220,150,1)] active:scale-[0.98] shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl px-6 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[16px] text-[rgba(0,0,0,0.7)] cursor-pointer"
             >
               + 小活動を作成
@@ -356,7 +418,7 @@ export default function ArticleDetail() {
           <div className="mb-6 flex items-center gap-3">
             {canEditArticle && (
               <button
-                onClick={() => navigate(`/schools/${schoolId}/post?articleId=${article.id}`)}
+                onClick={() => navigate(`${routeBase}/${schoolId}/post?articleId=${article.id}`)}
                 className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md"
               >
                 編集する
@@ -368,7 +430,7 @@ export default function ArticleDetail() {
                   <button
                     disabled={isTogglingStatus}
                     onClick={() => {
-                      void handleStatusUpdate("published");
+                      requestStatusUpdate("published");
                     }}
                     className="rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-5 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[15px] text-[rgba(0,0,0,0.7)] shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-60"
                   >
@@ -409,7 +471,7 @@ export default function ArticleDetail() {
                       setIsDeleting(true);
                       try {
                         await deleteArticle(schoolId, article.id);
-                        navigate(`/schools/${schoolId}/home`);
+                        navigate(`${routeBase}/${schoolId}/home`);
                       } catch (deleteError) {
                         alert(deleteError instanceof Error ? deleteError.message : "記事の削除に失敗しました。");
                       } finally {
@@ -439,8 +501,8 @@ export default function ArticleDetail() {
         )}
 
         {!isLoading && !error && article && (
-          <div className="space-y-12">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-12">
+            <div className={`grid grid-cols-1 gap-8 ${mobile ? "" : "lg:grid-cols-2"}`}>
               <div className="bg-white rounded-3xl overflow-hidden shadow-xl h-fit">
                 <div className="bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] h-[260px] flex items-center justify-center overflow-hidden">
                   <img
@@ -564,7 +626,7 @@ export default function ArticleDetail() {
                       canViewStatus={Boolean(currentUser)}
                       onClick={() =>
                         navigate(
-                          `/schools/${schoolId}/article/${childArticle.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
+                          `${routeBase}/${schoolId}/article/${childArticle.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
                           {
                             state: location.state,
                           }
@@ -591,7 +653,7 @@ export default function ArticleDetail() {
                     canViewStatus={Boolean(currentUser)}
                     onClick={() =>
                       navigate(
-                        `/schools/${schoolId}/article/${article.parentArticle?.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
+                        `${routeBase}/${schoolId}/article/${article.parentArticle?.id}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
                         {
                           state: location.state,
                         }
@@ -604,6 +666,24 @@ export default function ArticleDetail() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingStatusConfirmation)}
+        title="親活動を承認しますか？"
+        description={
+          article?.childArticles?.length
+            ? `この親活動を承認すると、紐付いている子活動 ${article.childArticles.length} 件もあわせて承認されます。`
+            : "この親活動を承認します。"
+        }
+        confirmLabel="まとめて承認する"
+        onCancel={() => setPendingStatusConfirmation(null)}
+        onConfirm={() => {
+          const nextStatus = pendingStatusConfirmation;
+          setPendingStatusConfirmation(null);
+          if (nextStatus) {
+            void handleStatusUpdate(nextStatus);
+          }
+        }}
+      />
       <ConfirmDialog
         open={isLogoutDialogOpen}
         title="ログアウトしますか？"

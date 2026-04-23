@@ -73,3 +73,59 @@ export async function createCategoryBySchoolId({ schoolId, label }) {
     connection.release();
   }
 }
+
+export async function deleteCategoryBySchoolId({ schoolId, categoryId }) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [schoolRows] = await connection.execute(
+      `SELECT id
+       FROM schools
+       WHERE slug = ?
+       LIMIT 1`,
+      [schoolId]
+    );
+
+    if (!schoolRows.length) {
+      await connection.rollback();
+      return false;
+    }
+
+    const schoolDbId = schoolRows[0].id;
+
+    const [categoryRows] = await connection.execute(
+      `SELECT id
+       FROM categories
+       WHERE id = ? AND school_id = ?
+       LIMIT 1`,
+      [categoryId, schoolDbId]
+    );
+
+    if (!categoryRows.length) {
+      await connection.rollback();
+      return false;
+    }
+
+    await connection.execute(
+      `DELETE FROM activity_categories
+       WHERE school_id = ? AND category_id = ?`,
+      [schoolDbId, categoryId]
+    );
+
+    await connection.execute(
+      `DELETE FROM categories
+       WHERE id = ? AND school_id = ?`,
+      [categoryId, schoolDbId]
+    );
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
