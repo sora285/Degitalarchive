@@ -1469,6 +1469,8 @@ export default function PostArticle() {
                   type="date"
                   value={articleDate}
                   onChange={(e) => setArticleDate(e.target.value)}
+                  min="1000-01-01"
+                  max="9999-12-31"
                   className="bg-white border-2 border-[rgba(0,0,0,0.1)] rounded-xl px-5 py-4 text-[16px] transition-all duration-200 focus:outline-none focus:border-[rgba(255,209,131,0.93)] focus:shadow-lg focus:shadow-[rgba(255,209,131,0.2)]"
                 />
               </div>
