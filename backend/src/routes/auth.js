@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, register } from '../services/authService.js';
+import { getCurrentAuthenticatedUser, login, register } from '../services/authService.js';
+import { requireAuthenticated } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -90,6 +91,21 @@ router.post('/logout', (_req, res) => {
     path: '/',
   });
   res.status(204).send();
+});
+
+router.get('/me', requireAuthenticated, async (req, res, next) => {
+  try {
+    const userId = Number(req.auth?.userId || 0);
+    const user = await getCurrentAuthenticatedUser({ userId });
+
+    if (!user) {
+      return res.status(404).json({ message: 'ユーザーが見つかりません。' });
+    }
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 export default router;

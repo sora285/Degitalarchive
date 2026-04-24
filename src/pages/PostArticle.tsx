@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Upload, LogOut, MapPin, Search, Check, Plus, X, ChevronDown, Trash2 } from "lucide-react";
-import { getCurrentUser, logoutCurrentUser } from "../lib/session";
+import { fetchCurrentUser, getCurrentUser, logoutCurrentUser, type CurrentUser } from "../lib/session";
 import { fetchClasses, type ClassOption } from "../lib/classes";
 import { fetchSchools } from "../lib/schools";
 import { createCategory, deleteCategory, fetchCategories, type CategoryOption } from "../lib/categories";
@@ -347,7 +347,8 @@ export default function PostArticle() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { schoolId } = useParams<{ schoolId: string }>();
-  const currentUser = getCurrentUser(schoolId);
+  const [sessionUser, setSessionUser] = useState<CurrentUser | null>(() => getCurrentUser(schoolId));
+  const currentUser = sessionUser;
   const isAdmin = currentUser?.role === "admin";
   const canUsePostEditor = Boolean(currentUser);
   const editingArticleId = Number(searchParams.get("articleId") || 0);
@@ -435,6 +436,31 @@ export default function PostArticle() {
     currentUser?.role === "user" &&
     isEditMode &&
     editingArticleStatus === "pending";
+
+  useEffect(() => {
+    setSessionUser(getCurrentUser(schoolId));
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId || sessionUser) {
+      return;
+    }
+
+    let mounted = true;
+    fetchCurrentUser(schoolId)
+      .then((user) => {
+        if (mounted && user) {
+          setSessionUser(user);
+        }
+      })
+      .catch((error) => {
+        console.error("ログインユーザー情報の取得に失敗しました:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId, sessionUser]);
 
   useEffect(() => {
     if (!schoolId) {
@@ -580,7 +606,7 @@ export default function PostArticle() {
   }, [preselectedParentActivityId, isEditMode]);
 
   useEffect(() => {
-    if (!schoolId || !isEditMode || !canUsePostEditor) {
+    if (!schoolId || !isEditMode) {
       return;
     }
 
@@ -631,7 +657,7 @@ export default function PostArticle() {
     return () => {
       mounted = false;
     };
-  }, [schoolId, editingArticleId, isEditMode, canUsePostEditor, isAdmin, currentUser]);
+  }, [schoolId, editingArticleId, isEditMode, isAdmin, currentUser]);
 
   useEffect(() => {
     if (!schoolId) {

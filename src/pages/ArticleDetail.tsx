@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, LogOut } from "lucide-react";
-import { getCurrentUser, logoutCurrentUser } from "../lib/session";
+import { fetchCurrentUser, getCurrentUser, logoutCurrentUser, type CurrentUser } from "../lib/session";
 import { ArticleData, deleteArticle, fetchArticleById, updateArticle } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
@@ -249,7 +249,8 @@ export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) 
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const currentUser = getCurrentUser(schoolId);
+  const [sessionUser, setSessionUser] = useState<CurrentUser | null>(() => getCurrentUser(schoolId));
+  const currentUser = sessionUser;
   const isAdmin = currentUser?.role === "admin";
   const [article, setArticle] = useState<ArticleData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -291,6 +292,31 @@ export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) 
       : `${routeBase}/${schoolId}/home`;
   const backLabel = from === "map" ? "地図に戻る" : "一覧に戻る";
   const mapEmbedUrl = article ? buildMapEmbedUrl(article) : "";
+
+  useEffect(() => {
+    setSessionUser(getCurrentUser(schoolId));
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId || sessionUser) {
+      return;
+    }
+
+    let mounted = true;
+    fetchCurrentUser(schoolId)
+      .then((user) => {
+        if (mounted && user) {
+          setSessionUser(user);
+        }
+      })
+      .catch((error) => {
+        console.error("ログインユーザー情報の取得に失敗しました:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [schoolId, sessionUser]);
 
   useEffect(() => {
     if (!schoolId || !id) {

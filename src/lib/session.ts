@@ -33,6 +33,43 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY);
 }
 
+export async function fetchCurrentUser(expectedSchoolId?: string): Promise<CurrentUser | null> {
+  const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    clearSession();
+    return null;
+  }
+
+  const text = await response.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || 'ユーザー情報の取得に失敗しました。');
+  }
+
+  const user = data?.user as CurrentUser | undefined;
+  if (!user) {
+    return null;
+  }
+
+  if (expectedSchoolId && user.schoolId !== expectedSchoolId) {
+    clearSession();
+    return null;
+  }
+
+  setCurrentUser(user);
+  return user;
+}
+
 export async function logoutCurrentUser() {
   try {
     await fetch(`${apiBaseUrl}/api/auth/logout`, {

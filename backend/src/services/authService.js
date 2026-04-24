@@ -13,6 +13,28 @@ function buildUserResponse(row) {
   };
 }
 
+export async function getCurrentAuthenticatedUser({ userId }) {
+  const [rows] = await pool.execute(
+    `SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      s.slug AS school_slug
+    FROM users u
+    INNER JOIN schools s ON s.id = u.school_id
+    WHERE u.id = ?
+    LIMIT 1`,
+    [userId]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return buildUserResponse(rows[0]);
+}
+
 async function createAuthResultByUserId(userId) {
   const [rows] = await pool.execute(
     `SELECT
