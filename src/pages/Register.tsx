@@ -120,10 +120,11 @@ export default function Register() {
           </button>
 
           <h1 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[32px] text-[rgba(0,0,0,0.8)] text-center mb-3">
-            テストアカウント作成
+            アカウント作成
           </h1>
 
-          <p className="text-center text-[14px] text-[rgba(0,0,0,0.6)] mb-8">{schoolName}</p>
+          <p className="text-center text-[14px] text-[rgba(0,0,0,0.6)] mb-2">{schoolName}</p>
+          <p className="text-center text-[13px] text-[rgba(0,0,0,0.5)] mb-8">この画面は一時公開中です。</p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {error && (

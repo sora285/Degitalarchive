@@ -5,6 +5,7 @@ import { getCurrentUser, logoutCurrentUser } from "../lib/session";
 import { ArticleData, fallbackArticles, fetchArticles } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
+import ArticleImageCarousel from "../components/ArticleImageCarousel";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -438,6 +439,14 @@ function Article({
   schoolId?: string;
   canViewStatus: boolean;
 }) {
+  const imageUrls =
+    article.imageUrls && article.imageUrls.length > 0
+      ? article.imageUrls
+      : [
+          schoolId
+            ? `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`
+            : (article.imageUrl || FIXED_ARTICLE_IMAGE),
+        ];
   const statusLabel = getStatusLabel(article.status);
   const statusClasses =
     article.status === "private_draft"
@@ -492,21 +501,12 @@ function Article({
           className="relative bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl shrink-0 overflow-hidden"
           style={{ height: 300 }}
         >
-          {/** 一覧はAPI経由URLを優先し、失敗時のみ固定画像へフォールバック */}
-          <img
-            src={
-              schoolId
-                ? `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`
-                : (article.imageUrl || FIXED_ARTICLE_IMAGE)
-            }
-            alt={article.title}
-            className="absolute inset-0 w-full h-full object-cover object-top"
-            loading="eager"
-            decoding="async"
-            onError={(e) => {
-              if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
-              e.currentTarget.src = FIXED_ARTICLE_IMAGE;
-            }}
+          <ArticleImageCarousel
+            imageUrls={imageUrls}
+            title={article.title}
+            fallbackImage={FIXED_ARTICLE_IMAGE}
+            heightClassName="h-full"
+            indicatorPlacement="inside"
           />
         </div>
         

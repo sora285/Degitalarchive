@@ -5,6 +5,7 @@ import { fetchCurrentUser, getCurrentUser, logoutCurrentUser, type CurrentUser }
 import { ArticleData, deleteArticle, fetchArticleById, updateArticle } from "../lib/articles";
 import fixedArticleImage from "../assets/article_fixed.svg";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
+import ArticleImageCarousel from "../components/ArticleImageCarousel";
 
 const FIXED_ARTICLE_IMAGE = fixedArticleImage;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -162,6 +163,14 @@ function RelatedArticleCard({
   canViewStatus: boolean;
   onClick: () => void;
 }) {
+  const imageUrls =
+    article.imageUrls && article.imageUrls.length > 0
+      ? article.imageUrls
+      : [
+          schoolId
+            ? `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`
+            : (article.imageUrl || FIXED_ARTICLE_IMAGE),
+        ];
   const statusLabel = getArticleStatusLabel(article.status);
   const statusClasses =
     article.status === "private_draft"
@@ -191,20 +200,12 @@ function RelatedArticleCard({
           className="relative bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] flex items-center justify-center group-hover:from-[#f0f0f0] group-hover:to-[#e0e0e0] transition-all rounded-t-3xl shrink-0 overflow-hidden"
           style={{ height: 300 }}
         >
-          <img
-            src={
-              schoolId
-                ? `${API_BASE_URL}/api/articles/${article.id}/image?schoolId=${encodeURIComponent(schoolId)}`
-                : (article.imageUrl || FIXED_ARTICLE_IMAGE)
-            }
-            alt={article.title}
-            className="absolute inset-0 h-full w-full object-cover object-top"
-            loading="lazy"
-            decoding="async"
-            onError={(e) => {
-              if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
-              e.currentTarget.src = FIXED_ARTICLE_IMAGE;
-            }}
+          <ArticleImageCarousel
+            imageUrls={imageUrls}
+            title={article.title}
+            fallbackImage={FIXED_ARTICLE_IMAGE}
+            heightClassName="h-full"
+            indicatorPlacement="inside"
           />
         </div>
         <div className="p-6 flex flex-col overflow-hidden flex-1 items-start text-left h-[260px]">
@@ -286,6 +287,10 @@ export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) 
     schoolId && id
       ? `${API_BASE_URL}/api/articles/${id}/image?schoolId=${encodeURIComponent(schoolId)}`
       : (article?.imageUrl || FIXED_ARTICLE_IMAGE);
+  const articleImageUrls =
+    article?.imageUrls && article.imageUrls.length > 0
+      ? article.imageUrls
+      : [articleImageSrc];
   const backDestination =
     from === "map"
       ? `${routeBase}/${schoolId}/map`
@@ -528,22 +533,19 @@ export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) 
 
         {!isLoading && !error && article && (
             <div className="space-y-12">
-            <div className={`grid grid-cols-1 gap-8 ${mobile ? "" : "lg:grid-cols-2"}`}>
-              <div className="bg-white rounded-3xl overflow-hidden shadow-xl h-fit">
-                <div className="bg-gradient-to-br from-[#e9e9e9] to-[#d9d9d9] h-[260px] flex items-center justify-center overflow-hidden">
-                  <img
-                    src={articleImageSrc}
-                    alt={article.title}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(e) => {
-                      if (e.currentTarget.src.endsWith(FIXED_ARTICLE_IMAGE)) return;
-                      e.currentTarget.src = FIXED_ARTICLE_IMAGE;
-                    }}
+            <div className={`grid grid-cols-1 gap-8 ${mobile ? "" : "lg:grid-cols-2 lg:auto-rows-fr"}`}>
+              <div className={`bg-white rounded-3xl overflow-hidden shadow-xl ${mobile ? "h-fit" : "h-full flex flex-col"}`}>
+                <div className="overflow-hidden">
+                  <ArticleImageCarousel
+                    imageUrls={articleImageUrls}
+                    title={article.title}
+                    fallbackImage={FIXED_ARTICLE_IMAGE}
+                    heightClassName={mobile ? "h-[320px]" : "h-[420px]"}
+                    imageFit="cover"
+                    indicatorPlacement="inside"
                   />
                 </div>
-                <div className="p-6 space-y-2">
+                <div className={`p-6 space-y-2 ${mobile ? "" : "flex-1"}`}>
                   {Boolean(currentUser) && (
                     <div className="mb-2">
                       <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold ${statusClasses}`}>
@@ -625,9 +627,9 @@ export default function ArticleDetail({ mobile = false }: { mobile?: boolean }) 
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-sm border-2 border-[rgba(0,0,0,0.1)] rounded-3xl shadow-2xl p-8">
+              <div className={`bg-white/80 backdrop-blur-sm border-2 border-[rgba(0,0,0,0.1)] rounded-3xl shadow-2xl p-8 ${mobile ? "" : "h-full flex flex-col"}`}>
                 <h1 className="font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] font-semibold text-[32px] text-[rgba(0,0,0,0.85)] mb-4">{article.title}</h1>
-                <div className="overflow-y-auto max-h-[600px] pr-2">
+                <div className={`overflow-y-auto pr-2 ${mobile ? "max-h-[600px]" : "flex-1 min-h-0"}`}>
                   <p className="font-['Inter:Regular','Noto_Sans_JP:Regular',sans-serif] font-normal leading-[185%] text-[16px] text-[rgba(0,0,0,0.75)] whitespace-pre-wrap">
                     {article.content || "本文は未登録です。"}
                   </p>

@@ -13,10 +13,61 @@ import ConfirmDialog from "../components/ui/ConfirmDialog";
 
 const DEFAULT_LOCATION_CENTER = { lat: 35.4560, lng: 139.6345 };
 
+function extractLocationLabel(source: any, fallback = "") {
+  const directName = String(
+    source?.name ||
+    source?.namedetails?.name ||
+    source?.namedetails?.["name:ja"] ||
+    source?.namedetails?.official_name ||
+    source?.namedetails?.["official_name:ja"] ||
+    source?.namedetails?.short_name ||
+    source?.namedetails?.["short_name:ja"] ||
+    source?.namedetails?.loc_name ||
+    source?.namedetails?.alt_name ||
+    source?.extratags?.name ||
+    source?.extratags?.official_name ||
+    source?.extratags?.brand ||
+    source?.extratags?.operator ||
+    source?.address?.amenity ||
+    source?.address?.building ||
+    source?.address?.tourism ||
+    source?.address?.attraction ||
+    source?.address?.shop ||
+    source?.address?.leisure ||
+    source?.address?.office ||
+    source?.address?.school ||
+    source?.address?.university ||
+    source?.address?.hospital ||
+    source?.address?.railway ||
+    source?.address?.station ||
+    source?.address?.suburb ||
+    source?.address?.neighbourhood ||
+    source?.address?.quarter ||
+    source?.address?.city ||
+    source?.address?.town ||
+    source?.address?.village ||
+    ""
+  ).trim();
+
+  if (directName) {
+    return directName;
+  }
+
+  const displayName = String(source?.display_name || "").trim();
+  if (displayName) {
+    const [firstSegment] = displayName.split(",");
+    if (firstSegment?.trim()) {
+      return firstSegment.trim();
+    }
+  }
+
+  return fallback.trim();
+}
+
 async function reverseGeocodeLocation(lat: number, lng: number) {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`,
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&namedetails=1&extratags=1&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`,
       {
         headers: {
           Accept: "application/json",
@@ -29,7 +80,7 @@ async function reverseGeocodeLocation(lat: number, lng: number) {
     }
 
     const data = await response.json();
-    return String(data?.display_name || "").trim();
+    return extractLocationLabel(data);
   } catch (error) {
     console.error("逆ジオコーディングに失敗しました:", error);
     return "";
@@ -38,7 +89,7 @@ async function reverseGeocodeLocation(lat: number, lng: number) {
 
 async function searchLocationByQuery(query: string, limit = 5) {
   const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}`
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&addressdetails=1&namedetails=1&extratags=1&limit=${limit}`
   );
 
   if (!response.ok) {
@@ -523,7 +574,7 @@ export default function PostArticle() {
         }
 
         const firstResult = results[0];
-        const resolvedName = String(firstResult.display_name || schoolName);
+        const resolvedName = extractLocationLabel(firstResult, schoolName);
         setLocationName((prev) => prev || resolvedName);
         setLatitude((prev) => prev || String(firstResult.lat || ""));
         setLongitude((prev) => prev || String(firstResult.lon || ""));
@@ -943,6 +994,7 @@ export default function PostArticle() {
   const handleSearchResultClick = (result: typeof searchResults[0]) => {
     setLatitude(result.lat);
     setLongitude(result.lon);
+    setLocationName((prev) => prev || extractLocationLabel(result));
     setSearchQuery(result.display_name);
     setShowResults(false);
   };

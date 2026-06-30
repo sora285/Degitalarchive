@@ -1,6 +1,6 @@
 
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import { setCurrentUser } from "../lib/session";
 import { fetchSchoolBySlug } from "../lib/schools";
@@ -210,6 +210,20 @@ export default function Login() {
               {isLoading ? "ログイン中..." : "ログイン"}
             </button>
           </form>
+
+          {schoolId && (
+            <div className="mt-8 rounded-2xl border border-[rgba(255,209,131,0.45)] bg-[rgba(255,248,232,0.92)] px-5 py-4">
+              <p className="text-[13px] text-[rgba(0,0,0,0.62)]">
+                一時的にアカウント作成画面を公開しています。
+              </p>
+              <Link
+                to={`/schools/${schoolId}/register`}
+                className="mt-3 inline-flex items-center justify-center rounded-xl border border-[rgba(0,0,0,0.12)] bg-white px-4 py-3 font-['Inter:Semi_Bold','Noto_Sans_JP:Bold',sans-serif] text-[15px] font-semibold text-[rgba(0,0,0,0.72)] transition-all duration-200 hover:shadow-md"
+              >
+                アカウント作成画面を開く
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>
